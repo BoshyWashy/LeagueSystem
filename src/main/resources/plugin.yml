@@ -1,0 +1,14 @@
+name: LeagueSystem
+main: io.bbrl.leaguesystem.Main
+version: 0.5.4
+api-version: 1.20
+authors: [BBRL]
+commands:
+  league:
+    description: League management root command
+    usage: /league <subcommand>
+    permission: bbrl.league.use
+permissions:
+  bbrl.league.use:
+    description: Allows use of the /league base command
+    default: op

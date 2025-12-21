@@ -1,0 +1,19 @@
+# LeagueSystem global configuration
+
+# Default point system used when creating a new league
+default-point-system: standard
+
+# Enable holograms globally (can be overridden per league)
+enable-holograms: true
+
+# Default hologram refresh interval (in seconds)
+hologram-refresh-seconds: 30
+
+# Max number of leagues a player can create (optional limit)
+max-leagues-per-player: 5
+
+# Default team color if none is specified
+default-team-color: "#FFFFFF"
+
+# Logging verbosity (info, debug, warn)
+log-level: info
