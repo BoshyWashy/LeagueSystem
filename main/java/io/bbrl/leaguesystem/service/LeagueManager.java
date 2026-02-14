@@ -95,18 +95,18 @@ public class LeagueManager {
 
     public boolean isPlayerInLeagueTeam(League league, String playerUuid) {
         return storage.loadTeams(league).values().stream()
-                .anyMatch(t -> t.getMembers().contains(playerUuid) || t.getReserves().contains(playerUuid));
+                .anyMatch(t -> t.getMembers().contains(playerUuid) || t.getReserves().contains(playerUuid) || t.isOwner(playerUuid));
     }
 
     public Optional<Team> getPlayerTeam(League league, String playerUuid) {
         return storage.loadTeams(league).values().stream()
-                .filter(t -> t.getMembers().contains(playerUuid) || t.getReserves().contains(playerUuid))
+                .filter(t -> t.getMembers().contains(playerUuid) || t.getReserves().contains(playerUuid) || t.isOwner(playerUuid))
                 .findFirst();
     }
 
     public boolean canCreateTeam(League league, String ownerUuid) {
         long alreadyOwns = storage.loadTeams(league).values().stream()
-                .filter(t -> ownerUuid.equals(t.getOwnerUuid())).count();
+                .filter(t -> t.isOwner(ownerUuid)).count();
         return alreadyOwns < league.getConfig().getMaxTeamOwnership();
     }
 
@@ -119,10 +119,21 @@ public class LeagueManager {
         }
 
         Team t = new Team(teamId.toLowerCase(), name, hex, ownerUuid);
-        // Don't add owner to members initially - positions are empty
         teams.put(teamId.toLowerCase(), t);
         storage.saveTeams(league, teams);
         return t;
+    }
+
+    public void renameTeam(League league, String oldTeamId, String newTeamId, String newName) {
+        Map<String, Team> teams = storage.loadTeams(league);
+        Team team = teams.get(oldTeamId.toLowerCase());
+        if (team == null) return;
+
+        if (teams.containsKey(newTeamId.toLowerCase()) && !oldTeamId.equalsIgnoreCase(newTeamId)) {
+            return; // New ID already exists
+        }
+
+        storage.renameTeam(league, oldTeamId, newTeamId, newName);
     }
 
     public boolean hasInvite(League league, String teamId, String playerUuid) {
@@ -131,8 +142,12 @@ public class LeagueManager {
     }
 
     public void invitePlayer(League league, Team team, String targetUuid, String targetName, boolean asReserve) {
+        invitePlayer(league, team, targetUuid, targetName, asReserve, false);
+    }
+
+    public void invitePlayer(League league, Team team, String targetUuid, String targetName, boolean asReserve, boolean asOwner) {
         league.getTeamInvites().computeIfAbsent(team.getId(), k -> new HashSet<>())
-                .add(new InviteEntry(targetUuid, targetName, asReserve));
+                .add(new InviteEntry(targetUuid, targetName, asReserve, asOwner));
         storage.saveLeague(league);
     }
 
@@ -157,7 +172,12 @@ public class LeagueManager {
                     if (ie.uuid.equals(uuid)) {
                         Optional<Team> ot = getTeam(league, e.getKey());
                         if (ot.isPresent()) {
-                            String type = ie.asReserve ? "as reserve" : "as main driver";
+                            String type;
+                            if (ie.asOwner) {
+                                type = "as co-owner";
+                            } else {
+                                type = ie.asReserve ? "as reserve" : "as main driver";
+                            }
                             player.sendMessage("§6" + ot.get().getName() +
                                     " has invited you to join their team in " + league.getName() + " " + type +
                                     " §a§l/league " + league.getId() + " team " + e.getKey() + " join");
@@ -173,21 +193,23 @@ public class LeagueManager {
         Team live = teams.get(teamId.toLowerCase());
         if (live == null) return;
 
-        if (live.getMembers().contains(playerUuid) || live.getReserves().contains(playerUuid)) {
+        if (live.getMembers().contains(playerUuid) || live.getReserves().contains(playerUuid) || live.isOwner(playerUuid)) {
             return;
         }
 
         for (Team t : teams.values()) {
-            if (t.getMembers().contains(playerUuid) || t.getReserves().contains(playerUuid)) {
+            if (t.getMembers().contains(playerUuid) || t.getReserves().contains(playerUuid) || t.isOwner(playerUuid)) {
                 return;
             }
         }
 
-        // Check if invite was for reserve
         Optional<InviteEntry> invite = getInvite(league, teamId, playerUuid);
         boolean asReserve = invite.map(i -> i.asReserve).orElse(false);
+        boolean asOwner = invite.map(i -> i.asOwner).orElse(false);
 
-        if (!asReserve && live.getMembers().size() < league.getConfig().getMaxDriversPerTeam()) {
+        if (asOwner) {
+            live.addOwner(playerUuid);
+        } else if (!asReserve && live.getMembers().size() < league.getConfig().getMaxDriversPerTeam()) {
             live.getMembers().add(playerUuid);
         } else if (live.getReserves().size() < league.getConfig().getMaxReservesPerTeam()) {
             live.getReserves().add(playerUuid);
@@ -199,6 +221,10 @@ public class LeagueManager {
     }
 
     public boolean leaveTeam(League league, String playerUuid) {
+        return leaveTeam(league, playerUuid, false);
+    }
+
+    public boolean leaveTeam(League league, String playerUuid, boolean asOwner) {
         Optional<Team> ot = getPlayerTeam(league, playerUuid);
         if (!ot.isPresent()) return false;
 
@@ -206,11 +232,16 @@ public class LeagueManager {
         Team live = teams.get(ot.get().getId());
         if (live == null) return false;
 
-        live.getMembers().remove(playerUuid);
-        live.getReserves().remove(playerUuid);
-
-        // Don't transfer ownership if owner leaves - owner stays unless team is deleted
-        // Owner can kick themselves but stays as owner
+        if (asOwner) {
+            // Can only leave as owner if not the main owner
+            if (live.isMainOwner(playerUuid)) {
+                return false; // Main owner cannot leave as owner
+            }
+            live.removeOwner(playerUuid);
+        } else {
+            live.getMembers().remove(playerUuid);
+            live.getReserves().remove(playerUuid);
+        }
 
         storage.saveTeams(league, teams);
         return true;
@@ -223,7 +254,21 @@ public class LeagueManager {
 
         live.getMembers().remove(playerUuid);
         live.getReserves().remove(playerUuid);
+        live.removeOwner(playerUuid);
 
+        storage.saveTeams(league, teams);
+    }
+
+    public void transferMainOwnership(League league, String teamId, String newMainOwnerUuid) {
+        Map<String, Team> teams = storage.loadTeams(league);
+        Team live = teams.get(teamId.toLowerCase());
+        if (live == null) return;
+
+        if (!live.isOwner(newMainOwnerUuid)) {
+            return; // New owner must already be an owner
+        }
+
+        live.transferMainOwnership(newMainOwnerUuid);
         storage.saveTeams(league, teams);
     }
 
@@ -232,14 +277,12 @@ public class LeagueManager {
         Team live = teams.get(teamId.toLowerCase());
         if (live == null) return;
 
-        // Reorder members list according to newOrder
         List<String> reordered = new ArrayList<>();
         for (String uuid : newOrder) {
             if (live.getMembers().contains(uuid)) {
                 reordered.add(uuid);
             }
         }
-        // Add any members not in newOrder at the end
         for (String uuid : live.getMembers()) {
             if (!reordered.contains(uuid)) {
                 reordered.add(uuid);
@@ -250,16 +293,35 @@ public class LeagueManager {
         storage.saveTeams(league, teams);
     }
 
+    public void reorderTeamMember(League league, String teamId, String playerUuid, boolean asReserve, int slotIndex) {
+        Map<String, Team> teams = storage.loadTeams(league);
+        Team live = teams.get(teamId.toLowerCase());
+        if (live == null) return;
+
+        live.getMembers().remove(playerUuid);
+        live.getReserves().remove(playerUuid);
+
+        if (asReserve) {
+            if (slotIndex < 0) slotIndex = 0;
+            if (slotIndex > live.getReserves().size()) slotIndex = live.getReserves().size();
+            live.getReserves().add(slotIndex, playerUuid);
+        } else {
+            if (slotIndex < 0) slotIndex = 0;
+            if (slotIndex > live.getMembers().size()) slotIndex = live.getMembers().size();
+            live.getMembers().add(slotIndex, playerUuid);
+        }
+
+        storage.saveTeams(league, teams);
+    }
+
     public void saveLeague(League league) { storage.saveLeague(league); }
 
-    // FIXED: Return double instead of int to avoid ClassCastException
     public double getPlayerPoints(League league, String playerUuid) {
         Map<String, Object> champ = storage.loadChampionship(league, league.getCurrentSeason());
         Map<String, Double> drivers = (Map<String, Double>) champ.getOrDefault("drivers", Map.of());
         return drivers.getOrDefault(playerUuid, 0.0);
     }
 
-    // FIXED: Return double instead of int to avoid ClassCastException
     public double getTeamPoints(League league, String teamId) {
         Map<String, Object> champ = storage.loadChampionship(league, league.getCurrentSeason());
         Map<String, Double> teams = (Map<String, Double>) champ.getOrDefault("teams", Map.of());
@@ -279,11 +341,17 @@ public class LeagueManager {
         public final String uuid;
         public final String name;
         public final boolean asReserve;
+        public final boolean asOwner;
 
         public InviteEntry(String uuid, String name, boolean asReserve) {
+            this(uuid, name, asReserve, false);
+        }
+
+        public InviteEntry(String uuid, String name, boolean asReserve, boolean asOwner) {
             this.uuid = uuid;
             this.name = name;
             this.asReserve = asReserve;
+            this.asOwner = asOwner;
         }
 
         @Override

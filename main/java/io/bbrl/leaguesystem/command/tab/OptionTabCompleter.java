@@ -14,12 +14,11 @@ public class OptionTabCompleter implements TabSubcommand {
 
     @Override
     public List<String> onTabComplete(CommandSender sender, String[] args) {
-        // /league <league> option <setting> <value>
         if (args.length == 1) {
             return List.of(
                             "maxteamownership", "maxdriversperteam", "maxreservesperteam",
-                            "pointsystem", "strikes", "primarycolor", "secondarycolor",
-                            "renameid", "renamedisplay"
+                            "pointsystem", "strikes", "fastestlap", "primarycolor", "secondarycolor",
+                            "allowanyonecreateteam", "renameid", "renamedisplay"
                     ).stream()
                     .filter(s -> s.toLowerCase().startsWith(args[0].toLowerCase()))
                     .toList();
@@ -32,6 +31,7 @@ public class OptionTabCompleter implements TabSubcommand {
                         "black", "dark_blue", "dark_green", "dark_aqua", "dark_red", "dark_purple",
                         "gold", "gray", "dark_gray", "blue", "green", "aqua", "red", "light_purple", "yellow", "white"
                 );
+                case "allowanyonecreateteam" -> List.of("true", "false");
                 case "renameid" -> List.of("<new-id>");
                 case "renamedisplay" -> List.of("<new-display-name>");
                 default -> List.of("<value>");

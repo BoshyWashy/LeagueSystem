@@ -36,9 +36,23 @@ public class PointsScaleSubcommand implements LeagueCommand.Subcommand {
         }
         League league = ol.get();
         Player p = (Player) sender;
-        if (!p.hasPermission("bbrl." + leagueId + ".manage") && !p.hasPermission("bbrl.op")) {
-            sender.sendMessage("§cNo permission");
-            return;
+
+        // Allow 'list' command for anyone with league.use permission
+        boolean hasManagePerm = p.hasPermission("league." + leagueId + ".manage") ||
+                p.hasPermission("league.op") ||
+                p.hasPermission("league.leagueowner." + leagueId);
+        boolean hasUsePerm = p.hasPermission("league.use");
+
+        if (action.equals("list")) {
+            if (!hasUsePerm && !hasManagePerm) {
+                sender.sendMessage("§cYou need permission 'league.use' to view point scales");
+                return;
+            }
+        } else {
+            if (!hasManagePerm) {
+                sender.sendMessage("§cNo permission to modify point scales. You need 'league.leagueowner." + leagueId + "' or 'league.op'");
+                return;
+            }
         }
 
         Map<Integer, Integer> map = league.getConfig().getCustomScales().computeIfAbsent(scale, k -> new HashMap<>());

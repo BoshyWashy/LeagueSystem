@@ -25,6 +25,14 @@ public class LeagueCommand implements CommandExecutor, TabCompleter {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        // Permission check for base command
+        if (sender instanceof Player p) {
+            if (!p.hasPermission("league.use") && !p.hasPermission("league.op")) {
+                sender.sendMessage("§cYou need permission 'league.use' to use this command");
+                return true;
+            }
+        }
+
         if (args.length >= 1 && args[0].equalsIgnoreCase("create")) {
             String[] rest = args.length > 1 ? Arrays.copyOfRange(args, 1, args.length) : new String[0];
             new CreateSubcommand(manager).execute(sender, rest);
@@ -56,8 +64,9 @@ public class LeagueCommand implements CommandExecutor, TabCompleter {
             }
 
             if (sender instanceof Player p) {
-                if (!p.hasPermission("bbrl." + leagueId + ".manage") && !p.hasPermission("bbrl.op")) {
-                    sender.sendMessage("§cYou don't have permission to delete this league");
+                // Only league owner or op can delete leagues
+                if (!p.hasPermission("league.op") && !p.hasPermission("league.leagueowner." + leagueId)) {
+                    sender.sendMessage("§cYou don't have permission to delete this league. You need 'league.leagueowner." + leagueId + "' or 'league.op'");
                     return true;
                 }
             }
@@ -73,17 +82,25 @@ public class LeagueCommand implements CommandExecutor, TabCompleter {
             case "team"   -> new TeamSubcommand(manager);
             case "points" -> new PointsScaleSubcommand(manager);
             case "season" -> new SeasonSubcommand(manager);
+            case "setspawn", "spawn" -> new SpawnSubcommand(manager);
             default -> null;
         };
 
         if (sc == null) {
-            sender.sendMessage("§cUnknown subcommand. Available: info, option, team, points, season, delete");
+            sender.sendMessage("§cUnknown subcommand. Available: info, option, team, points, season, setspawn, spawn, delete");
             return true;
         }
 
-        String[] subArgs = new String[rest.length + 1];
-        subArgs[0] = leagueId;
-        System.arraycopy(rest, 0, subArgs, 1, rest.length);
+        String[] subArgs;
+        if (subKey.equals("setspawn") || subKey.equals("spawn")) {
+            subArgs = new String[2];
+            subArgs[0] = leagueId;
+            subArgs[1] = subKey;
+        } else {
+            subArgs = new String[rest.length + 1];
+            subArgs[0] = leagueId;
+            System.arraycopy(rest, 0, subArgs, 1, rest.length);
+        }
 
         try {
             sc.execute(sender, subArgs);
@@ -99,9 +116,21 @@ public class LeagueCommand implements CommandExecutor, TabCompleter {
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 0) return List.of();
 
+        // Check base permission for tab complete
+        if (sender instanceof Player p) {
+            if (!p.hasPermission("league.use") && !p.hasPermission("league.op")) {
+                return List.of();
+            }
+        }
+
         if (args.length == 1) {
             List<String> out = new ArrayList<>();
-            out.add("create");
+            // Only show create if they have permission
+            if (!(sender instanceof Player) ||
+                    ((Player)sender).hasPermission("league.op") ||
+                    ((Player)sender).hasPermission("league.createleague")) {
+                out.add("create");
+            }
             manager.allLeagues().forEach(l -> out.add(l.getId()));
             return out.stream()
                     .filter(s -> s.toLowerCase().startsWith(args[0].toLowerCase()))
@@ -122,7 +151,14 @@ public class LeagueCommand implements CommandExecutor, TabCompleter {
         io.bbrl.leaguesystem.model.League league = ol.get();
 
         if (args.length == 2) {
-            List<String> out = new ArrayList<>(List.of("info", "option", "team", "points", "season", "delete"));
+            List<String> out = new ArrayList<>(List.of("info", "option", "team", "points", "season", "spawn"));
+            // Only show delete and setspawn if they have permission
+            if (!(sender instanceof Player) ||
+                    ((Player)sender).hasPermission("league.op") ||
+                    ((Player)sender).hasPermission("league.leagueowner." + firstArg)) {
+                out.add("delete");
+                out.add("setspawn");
+            }
             return out.stream()
                     .filter(s -> s.toLowerCase().startsWith(args[1].toLowerCase()))
                     .toList();
@@ -137,6 +173,7 @@ public class LeagueCommand implements CommandExecutor, TabCompleter {
             case "team"   -> new TeamTabCompleter(manager, league);
             case "points" -> new PointsScaleTabCompleter(manager, league);
             case "season" -> new SeasonTabCompleter(manager, league);
+            case "setspawn", "spawn" -> null;
             default -> null;
         };
 

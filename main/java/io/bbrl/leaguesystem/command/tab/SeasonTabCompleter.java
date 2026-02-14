@@ -19,8 +19,6 @@ public class SeasonTabCompleter implements TabSubcommand {
 
     @Override
     public List<String> onTabComplete(CommandSender sender, String[] args) {
-        // /league <league> season <new|seasonname> <subcommand>
-
         if (args.length == 1) {
             List<String> out = new ArrayList<>();
             out.add("new");
@@ -58,7 +56,7 @@ public class SeasonTabCompleter implements TabSubcommand {
             }
             case "edit" -> {
                 if (args.length == 3) return List.of("raceCount");
-                if (args.length >= 4) return List.of("<freeText>");
+                if (args.length >= 4) return List.of("<AmountOfRaces>");
                 return List.of();
             }
             case "driver" -> {
@@ -104,7 +102,7 @@ public class SeasonTabCompleter implements TabSubcommand {
                             return manager.getStorage().listRaces(league, seasonName);
                         }
                         if (args.length == 5) {
-                            return List.of("standings", "standings-team");
+                            return List.of("standings", "standings-team", "fastestlap");
                         }
                         if (args.length == 6) {
                             String subSub = args[4].toLowerCase();
@@ -115,10 +113,17 @@ public class SeasonTabCompleter implements TabSubcommand {
                                         .toList();
                             } else if (subSub.equals("standings-team")) {
                                 return manager.getStorage().loadTeams(league).keySet().stream().toList();
+                            } else if (subSub.equals("fastestlap")) {
+                                // For fastestlap, suggest players and "clear"
+                                List<String> suggestions = new ArrayList<>();
+                                suggestions.add("clear");
+                                suggestions.addAll(Bukkit.getOnlinePlayers().stream()
+                                        .map(p -> p.getName())
+                                        .toList());
+                                return suggestions.stream()
+                                        .filter(n -> n.toLowerCase().startsWith(args[5].toLowerCase()))
+                                        .toList();
                             }
-                        }
-                        if (args.length == 7) {
-                            return List.of("<position|0>", "remove", "<points>");
                         }
                         return List.of();
                     }

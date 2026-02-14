@@ -18,6 +18,15 @@ public class CreateSubcommand implements LeagueCommand.Subcommand {
             sender.sendMessage("§cUsage: /league create <id> [display name]");
             return;
         }
+
+        // Check permission for creating leagues
+        if (sender instanceof Player p) {
+            if (!p.hasPermission("league.op") && !p.hasPermission("league.createleague")) {
+                sender.sendMessage("§cYou need permission 'league.createleague' or 'league.op' to create leagues");
+                return;
+            }
+        }
+
         String id = args[0].toLowerCase();
         String name = args.length > 1 ? String.join(" ", java.util.Arrays.copyOfRange(args, 1, args.length)) : id;
 
@@ -29,9 +38,9 @@ public class CreateSubcommand implements LeagueCommand.Subcommand {
             owner = "Console | console";
         }
 
-        /* build league object – owner is carried in a transient field we added to LeagueConfig */
+        /* build league object */
         LeagueConfig config = new LeagueConfig();
-        config.setOwner(owner);          // NEW transient field – see LeagueConfig.java patch below
+        config.setOwner(owner);
         League league = new League(id, name, config);
 
         /* let storage write BOTH index and league.yml */
@@ -40,6 +49,13 @@ public class CreateSubcommand implements LeagueCommand.Subcommand {
             return;
         }
         manager.getStorage().saveLeague(league);
+
+        // Grant the creator league owner permission automatically
+        if (sender instanceof Player p) {
+            sender.sendMessage("§aYou have been granted league owner permissions for this league");
+            sender.sendMessage("§7Permission: league.leagueowner." + id);
+        }
+
         sender.sendMessage("§aLeague " + name + " created with id " + id);
     }
 }

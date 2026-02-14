@@ -55,6 +55,10 @@ public final class LeagueStorage {
     public Map<String, Team> loadTeams(League l) { return db.loadTeams(l.getId()); }
     public void saveTeams(League l, Map<String, Team> teams) { db.saveTeams(l.getId(), teams); }
 
+    public void renameTeam(League l, String oldTeamId, String newTeamId, String newName) {
+        db.renameTeam(l.getId(), oldTeamId, newTeamId, newName);
+    }
+
     public void saveRace(League l, String season, String race, Map<String, Object> ignored) {
         db.saveRace(l.getId(), season, race);
     }
@@ -82,6 +86,18 @@ public final class LeagueStorage {
 
     public Map<String, Integer> getRaceResults(League l, String season, String race) {
         return db.getRaceResults(l.getId(), season, race);
+    }
+
+    public void saveFastestLap(League l, String season, String race, String uuid, int points) {
+        db.saveFastestLap(l.getId(), season, race, uuid, points);
+    }
+
+    public void deleteFastestLap(League l, String season, String race) {
+        db.deleteFastestLap(l.getId(), season, race);
+    }
+
+    public Map<String, Object> getFastestLap(League l, String season, String race) {
+        return db.getFastestLap(l.getId(), season, race);
     }
 
     public void savePointSystem(League l, Map<String, Map<Integer, Integer>> scales) {
@@ -118,6 +134,14 @@ public final class LeagueStorage {
     public void saveChampionship(League l, String season, Map<String, Object> ignored) {
         if (l == null || season == null) return;
         db.rebuildChampionship(l.getId(), season);
+    }
+
+    public void addManualAdjustment(League l, String season, String uuid, double delta) {
+        db.addManualAdjustment(l.getId(), season, uuid, delta);
+    }
+
+    public double getManualAdjustment(League l, String season, String uuid) {
+        return db.getManualAdjustment(l.getId(), season, uuid);
     }
 
     public final File leaguesRoot = new File("");

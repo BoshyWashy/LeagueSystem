@@ -7,6 +7,8 @@ import io.bbrl.leaguesystem.model.Team;
 import io.bbrl.leaguesystem.service.LeagueManager;
 import io.bbrl.leaguesystem.service.PointCalculator;
 import io.bbrl.leaguesystem.config.LeagueStorage;
+import net.md_5.bungee.api.chat.ClickEvent;
+import net.md_5.bungee.api.chat.TextComponent;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.command.CommandSender;
@@ -40,6 +42,14 @@ public class SeasonSubcommand implements LeagueCommand.Subcommand {
         String action = args[1];
 
         if (action.equalsIgnoreCase("new")) {
+            if (sender instanceof Player p) {
+                if (!p.hasPermission("league.op") &&
+                        !p.hasPermission("league.leagueowner." + leagueId)) {
+                    sender.sendMessage("§cYou need permission 'league.leagueowner." + leagueId + "' or 'league.op' to create seasons");
+                    return;
+                }
+            }
+
             if (args.length < 3) {
                 sender.sendMessage("§cUsage: /league season <league> new <seasonName> [raceCount]");
                 return;
@@ -104,8 +114,9 @@ public class SeasonSubcommand implements LeagueCommand.Subcommand {
         }
 
         if (sender instanceof Player p) {
-            if (!p.hasPermission("bbrl." + league.getId() + ".manage") && !p.hasPermission("bbrl.op")) {
-                sender.sendMessage("§cYou don't have permission to delete seasons");
+            if (!p.hasPermission("league.op") &&
+                    !p.hasPermission("league.leagueowner." + league.getId())) {
+                sender.sendMessage("§cYou need permission 'league.leagueowner." + league.getId() + "' or 'league.op' to delete seasons");
                 return;
             }
         }
@@ -115,6 +126,14 @@ public class SeasonSubcommand implements LeagueCommand.Subcommand {
     }
 
     private void handleEdit(CommandSender sender, League league, Season season, String[] args) {
+        if (sender instanceof Player p) {
+            if (!p.hasPermission("league.op") &&
+                    !p.hasPermission("league.leagueowner." + league.getId())) {
+                sender.sendMessage("§cYou need permission 'league.leagueowner." + league.getId() + "' or 'league.op' to edit seasons");
+                return;
+            }
+        }
+
         if (args.length < 4 || !args[3].equalsIgnoreCase("raceCount")) {
             sender.sendMessage("§cUsage: /league season <league> <season> edit raceCount <text>");
             return;
@@ -131,8 +150,9 @@ public class SeasonSubcommand implements LeagueCommand.Subcommand {
         }
 
         if (sender instanceof Player p) {
-            if (!p.hasPermission("bbrl." + league.getId() + ".manage") && !p.hasPermission("bbrl.op")) {
-                sender.sendMessage("§cYou don't have permission to modify races");
+            if (!p.hasPermission("league.op") &&
+                    !p.hasPermission("league.leagueowner." + league.getId())) {
+                sender.sendMessage("§cYou need permission 'league.leagueowner." + league.getId() + "' or 'league.op' to modify races");
                 return;
             }
         }
@@ -169,8 +189,8 @@ public class SeasonSubcommand implements LeagueCommand.Subcommand {
     }
 
     private void handleRaceEdit(CommandSender sender, League league, String season, String[] args) {
-        if (args.length < 5) {
-            sender.sendMessage("§cUsage: /league season <league> <season> race edit <name> standings|standings-team ...");
+        if (args.length < 4) {
+            sender.sendMessage("§cUsage: /league season <league> <season> race edit <name> standings|standings-team|fastestlap ...");
             return;
         }
 
@@ -180,7 +200,8 @@ public class SeasonSubcommand implements LeagueCommand.Subcommand {
         switch (editType) {
             case "standings" -> handleRaceEditStandings(sender, league, season, raceName, Arrays.copyOfRange(args, 3, args.length));
             case "standings-team" -> handleRaceEditTeamStandings(sender, league, season, raceName, Arrays.copyOfRange(args, 3, args.length));
-            default -> sender.sendMessage("§cUnknown edit type. Use: standings or standings-team");
+            case "fastestlap" -> handleRaceEditFastestLap(sender, league, season, raceName, Arrays.copyOfRange(args, 3, args.length));
+            default -> sender.sendMessage("§cUnknown edit type. Use: standings, standings-team, or fastestlap");
         }
     }
 
@@ -258,6 +279,32 @@ public class SeasonSubcommand implements LeagueCommand.Subcommand {
         sender.sendMessage("§a" + action + " " + Math.abs(points) + " points for " + team.get().getName() + " in " + raceName);
     }
 
+    private void handleRaceEditFastestLap(CommandSender sender, League league, String season, String raceName, String[] args) {
+        // If no args or "clear", remove fastest lap
+        if (args.length < 1 || args[0].equalsIgnoreCase("clear")) {
+            storage.deleteFastestLap(league, season, raceName);
+            storage.saveChampionship(league, season, null);
+            sender.sendMessage("§aCleared fastest lap from " + raceName);
+            return;
+        }
+
+        String driverName = args[0];
+
+        OfflinePlayer op = findPlayer(driverName);
+        if (op == null) {
+            sender.sendMessage("§cDriver not found: " + driverName);
+            return;
+        }
+
+        String uuid = op.getUniqueId().toString();
+        int points = league.getConfig().getFastestLapPoints();
+
+        storage.saveFastestLap(league, season, raceName, uuid, points);
+        storage.saveChampionship(league, season, null);
+
+        sender.sendMessage("§aSet fastest lap for " + raceName + " to " + driverName + " (" + points + " pts)");
+    }
+
     private void handleRaceResults(CommandSender sender, League league, String season, String[] args) {
         if (args.length < 2) {
             sender.sendMessage("§cUsage: /league season <league> <season> race results <race>");
@@ -273,24 +320,36 @@ public class SeasonSubcommand implements LeagueCommand.Subcommand {
 
         sender.sendMessage("§7---- §aResults for §f" + raceName + "§7 ----");
         sender.sendMessage("§7§o(Season: §7§o" + season + "§7§o)");
-        sender.sendMessage("§a================================");
+        sender.sendMessage("§a======================================");
+
         int pos = 1;
         for (Map.Entry<String, Integer> e : results.entrySet()) {
             String playerName = getPlayerName(e.getKey());
             sender.sendMessage("§a" + pos++ + ". §f" + playerName + " §a- " + e.getValue() + " pts");
         }
+
+        Map<String, Object> fastestLap = storage.getFastestLap(league, season, raceName);
+        if (!fastestLap.isEmpty()) {
+            String flUuid = (String) fastestLap.get("uuid");
+            int flPoints = (int) fastestLap.get("points");
+            String flName = getPlayerName(flUuid);
+            sender.sendMessage(" ");
+            sender.sendMessage("§e★ Fastest Lap: §f" + flName + " §e(+" + flPoints + " pts)");
+        }
+
+        sender.sendMessage("§a======================================");
     }
 
     private void handleDriver(CommandSender sender, League league, String season, String[] args) {
-        // FIXED: Proper argument parsing
         if (args.length < 2) {
             sender.sendMessage("§cUsage: /league season <league> <season> driver <name> <points>");
             return;
         }
 
         if (sender instanceof Player p) {
-            if (!p.hasPermission("bbrl." + league.getId() + ".manage") && !p.hasPermission("bbrl.op")) {
-                sender.sendMessage("§cYou don't have permission to modify driver points");
+            if (!p.hasPermission("league.op") &&
+                    !p.hasPermission("league.leagueowner." + league.getId())) {
+                sender.sendMessage("§cYou need permission 'league.leagueowner." + league.getId() + "' or 'league.op' to modify driver points");
                 return;
             }
         }
@@ -298,9 +357,9 @@ public class SeasonSubcommand implements LeagueCommand.Subcommand {
         String name = args[0];
         String pointsStr = args[1];
 
-        double points;
+        double adjustment;
         try {
-            points = Double.parseDouble(pointsStr);
+            adjustment = Double.parseDouble(pointsStr);
         } catch (NumberFormatException e) {
             sender.sendMessage("§cPoints must be a number (positive to add, negative to remove)");
             return;
@@ -314,12 +373,18 @@ public class SeasonSubcommand implements LeagueCommand.Subcommand {
 
         String uuid = op.getUniqueId().toString();
 
-        // Add manual adjustment as a race result with position 0
-        storage.saveRaceResult(league, season, "__manual__", uuid, 0, (int) points);
+        storage.addManualAdjustment(league, season, uuid, adjustment);
         storage.saveChampionship(league, season, null);
 
-        String action = points >= 0 ? "added" : "removed";
-        sender.sendMessage("§a" + action + " " + Math.abs(points) + " points for " + name);
+        Map<String, Object> champ = storage.loadChampionship(league, season);
+        Map<String, Double> drivers = (Map<String, Double>) champ.getOrDefault("drivers", new HashMap<>());
+        double newTotal = drivers.getOrDefault(uuid, 0.0);
+
+        double totalAdjustment = storage.getManualAdjustment(league, season, uuid);
+        String action = adjustment >= 0 ? "added +" : "subtracted ";
+        sender.sendMessage("§a" + action + Math.abs(adjustment) + " points for " + name);
+        sender.sendMessage("§7Total manual adjustment: " + (totalAdjustment >= 0 ? "+" : "") + String.format("%.1f", totalAdjustment));
+        sender.sendMessage("§7New total: " + String.format("%.1f", newTotal) + " points");
     }
 
     private void handleStandings(CommandSender sender, League league, String season, String[] args) {
@@ -350,6 +415,12 @@ public class SeasonSubcommand implements LeagueCommand.Subcommand {
                 }
                 sender.sendMessage(" ");
                 sender.sendMessage("§a======================================");
+
+                if (sender instanceof Player player) {
+                    TextComponent teamStandings = new TextComponent("§a[Click to view Team Standings]");
+                    teamStandings.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/league " + league.getId() + " season " + season + " standings teams"));
+                    player.spigot().sendMessage(teamStandings);
+                }
             }
             case "teams" -> {
                 sender.sendMessage("§a-===- §fTeam Standings §a–§f " + season + "§a -===-");
@@ -373,6 +444,12 @@ public class SeasonSubcommand implements LeagueCommand.Subcommand {
                 }
                 sender.sendMessage(" ");
                 sender.sendMessage("§a======================================");
+
+                if (sender instanceof Player player) {
+                    TextComponent driverStandings = new TextComponent("§a[Click to view Driver Standings]");
+                    driverStandings.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/league " + league.getId() + " season " + season + " standings individual"));
+                    player.spigot().sendMessage(driverStandings);
+                }
             }
             default -> sender.sendMessage("§cMode must be 'individual' or 'teams'");
         }

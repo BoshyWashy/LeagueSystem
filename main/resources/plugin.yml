@@ -1,14 +1,42 @@
 name: LeagueSystem
 main: io.bbrl.leaguesystem.Main
-version: 0.8.18
+version: 1.0.0
 api-version: 1.20
 authors: [BBRL]
 commands:
   league:
     description: League management root command
     usage: /league <subcommand>
-    permission: bbrl.league.use
+    permission: league.use
+  leagueadmin:
+    description: LeagueSystem admin configuration command
+    usage: /leagueadmin <reload|set|get|info|edit-team>
+    permission: league.admin
 permissions:
-  bbrl.league.use:
+  # Base command permission
+  league.use:
     description: Allows use of the /league base command
     default: op
+
+  # League creation permission
+  league.createleague:
+    description: Allows creating new leagues
+    default: op
+
+  # Admin permission for /leagueadmin
+  league.admin:
+    description: Allows use of /leagueadmin command to edit plugin config
+    default: op
+
+  # Operator permission - grants all access
+  league.op:
+    description: Operator permission - grants full access to all league features
+    default: op
+    children:
+      league.use: true
+      league.createleague: true
+      league.admin: true
+
+  # League-specific permissions (these are granted per-league)
+  # league.leagueowner.<leagueid> - Owner of a specific league
+  # league.teamcreate.<leagueid> - Can create teams in a specific league (when restricted)

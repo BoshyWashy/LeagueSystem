@@ -16,7 +16,7 @@ max-leagues-per-player: 5
 default-team-color: "#FFFFFF"
 
 # Default league colors (primary and secondary)
-default-league-primary-color: "§6"  # Gold
+default-league-primary-color: "§a"  # Green
 default-league-secondary-color: "§f"  # White
 
 # Logging verbosity (info, debug, warn)

@@ -1,5 +1,6 @@
 package io.bbrl.leaguesystem;
 
+import io.bbrl.leaguesystem.command.LeagueAdminCommand;
 import io.bbrl.leaguesystem.command.LeagueCommand;
 import io.bbrl.leaguesystem.config.LeagueStorage;
 import io.bbrl.leaguesystem.model.League;
@@ -39,6 +40,11 @@ public class Main extends JavaPlugin implements Listener {
         LeagueCommand leagueCommand = new LeagueCommand(leagueManager, hologramService);
         getCommand("league").setExecutor(leagueCommand);
         getCommand("league").setTabCompleter(leagueCommand);
+
+        // Register leagueadmin command
+        LeagueAdminCommand adminCommand = new LeagueAdminCommand(this);
+        getCommand("leagueadmin").setExecutor(adminCommand);
+        getCommand("leagueadmin").setTabCompleter(adminCommand);
 
         getServer().getPluginManager().registerEvents(this, this);
 

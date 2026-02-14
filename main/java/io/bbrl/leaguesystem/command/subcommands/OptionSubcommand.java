@@ -49,9 +49,13 @@ public class OptionSubcommand implements LeagueCommand.Subcommand {
             return;
         }
         Player p = (Player) sender;
-        String perm = "bbrl." + leagueId + ".manage";
-        if (!p.hasPermission(perm) && !p.hasPermission("bbrl.op")) {
-            sender.sendMessage("§cYou lack permission: " + perm);
+
+        // Check permissions: league owner or operator
+        boolean isLeagueOwner = p.hasPermission("league.leagueowner." + leagueId);
+        boolean isOp = p.hasPermission("league.op");
+
+        if (!isLeagueOwner && !isOp) {
+            sender.sendMessage("§cYou lack permission. You need 'league.leagueowner." + leagueId + "' or 'league.op'");
             return;
         }
 
@@ -101,6 +105,16 @@ public class OptionSubcommand implements LeagueCommand.Subcommand {
                     sender.sendMessage("§cValue must be a number");
                 }
                 break;
+            case "fastestlap":
+                try {
+                    int v = Integer.parseInt(value);
+                    league.getConfig().setFastestLapPoints(v);
+                    manager.saveLeague(league);
+                    sender.sendMessage("§aSet fastest lap points to " + v);
+                } catch (NumberFormatException ex) {
+                    sender.sendMessage("§cValue must be a number");
+                }
+                break;
             case "primarycolor":
                 String primaryCode = COLOR_MAP.get(value.toLowerCase());
                 if (primaryCode == null) {
@@ -120,6 +134,13 @@ public class OptionSubcommand implements LeagueCommand.Subcommand {
                 league.getConfig().setSecondaryColor(secondaryCode);
                 manager.saveLeague(league);
                 sender.sendMessage("§aSet secondary color to " + value);
+                break;
+            case "allowanyonecreateteam":
+                boolean allow = Boolean.parseBoolean(value);
+                league.getConfig().setAllowAnyoneCreateTeam(allow);
+                manager.saveLeague(league);
+                sender.sendMessage("§aSet allowAnyoneCreateTeam to " + allow);
+                sender.sendMessage(allow ? "§7Anyone can now create teams in this league" : "§7Only players with 'league.teamcreate." + leagueId + "' can create teams");
                 break;
             case "renameid":
                 if (args.length < 3) {
@@ -149,6 +170,7 @@ public class OptionSubcommand implements LeagueCommand.Subcommand {
                 break;
             default:
                 sender.sendMessage("§cUnknown setting: " + setting);
+                sender.sendMessage("§cAvailable: maxteamownership, maxdriversperteam, maxreservesperteam, pointsystem, strikes, fastestlap, primarycolor, secondarycolor, allowanyonecreateteam, renameid, renamedisplay");
         }
     }
 }
