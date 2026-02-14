@@ -55,7 +55,7 @@ public class OptionSubcommand implements LeagueCommand.Subcommand {
         boolean isOp = p.hasPermission("league.op");
 
         if (!isLeagueOwner && !isOp) {
-            sender.sendMessage("§cYou lack permission. You need 'league.leagueowner." + leagueId + "' or 'league.op'");
+            sender.sendMessage("§cYou lack permission. If you believe this is a mistake contact staff.");
             return;
         }
 
@@ -118,22 +118,22 @@ public class OptionSubcommand implements LeagueCommand.Subcommand {
             case "primarycolor":
                 String primaryCode = COLOR_MAP.get(value.toLowerCase());
                 if (primaryCode == null) {
-                    sender.sendMessage("§cUnknown color. Use: " + String.join(", ", COLOR_MAP.keySet()));
+                    sender.sendMessage("§cUnknown colour. Use: " + String.join(", ", COLOR_MAP.keySet()));
                     return;
                 }
                 league.getConfig().setPrimaryColor(primaryCode);
                 manager.saveLeague(league);
-                sender.sendMessage("§aSet primary color to " + value);
+                sender.sendMessage("§aSet primary colour to " + value);
                 break;
             case "secondarycolor":
                 String secondaryCode = COLOR_MAP.get(value.toLowerCase());
                 if (secondaryCode == null) {
-                    sender.sendMessage("§cUnknown color. Use: " + String.join(", ", COLOR_MAP.keySet()));
+                    sender.sendMessage("§cUnknown colour. Use: " + String.join(", ", COLOR_MAP.keySet()));
                     return;
                 }
                 league.getConfig().setSecondaryColor(secondaryCode);
                 manager.saveLeague(league);
-                sender.sendMessage("§aSet secondary color to " + value);
+                sender.sendMessage("§aSet secondary colour to " + value);
                 break;
             case "allowanyonecreateteam":
                 boolean allow = Boolean.parseBoolean(value);

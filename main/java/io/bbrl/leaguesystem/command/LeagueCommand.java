@@ -28,7 +28,7 @@ public class LeagueCommand implements CommandExecutor, TabCompleter {
         // Permission check for base command
         if (sender instanceof Player p) {
             if (!p.hasPermission("league.use") && !p.hasPermission("league.op")) {
-                sender.sendMessage("§cYou need permission 'league.use' to use this command");
+                sender.sendMessage("§cYou do not have permission to perform this command.");
                 return true;
             }
         }

@@ -134,7 +134,7 @@ public class TeamSubcommand implements LeagueCommand.Subcommand {
             if (!p.hasPermission("league.op") &&
                     !p.hasPermission("league.leagueowner." + league.getId()) &&
                     !p.hasPermission("league.teamcreate." + league.getId())) {
-                sender.sendMessage("§cYou need permission 'league.teamcreate." + league.getId() + "' to create teams in this league");
+                sender.sendMessage("§cYou do not have permission to create teams in this league");
                 return;
             }
         }

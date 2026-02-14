@@ -22,7 +22,7 @@ public class CreateSubcommand implements LeagueCommand.Subcommand {
         // Check permission for creating leagues
         if (sender instanceof Player p) {
             if (!p.hasPermission("league.op") && !p.hasPermission("league.createleague")) {
-                sender.sendMessage("§cYou need permission 'league.createleague' or 'league.op' to create leagues");
+                sender.sendMessage("§cYou do not have permission to create leagues");
                 return;
             }
         }
@@ -53,7 +53,6 @@ public class CreateSubcommand implements LeagueCommand.Subcommand {
         // Grant the creator league owner permission automatically
         if (sender instanceof Player p) {
             sender.sendMessage("§aYou have been granted league owner permissions for this league");
-            sender.sendMessage("§7Permission: league.leagueowner." + id);
         }
 
         sender.sendMessage("§aLeague " + name + " created with id " + id);

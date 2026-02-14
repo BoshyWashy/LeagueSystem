@@ -114,7 +114,6 @@ public class SeasonTabCompleter implements TabSubcommand {
                             } else if (subSub.equals("standings-team")) {
                                 return manager.getStorage().loadTeams(league).keySet().stream().toList();
                             } else if (subSub.equals("fastestlap")) {
-                                // For fastestlap, suggest players and "clear"
                                 List<String> suggestions = new ArrayList<>();
                                 suggestions.add("clear");
                                 suggestions.addAll(Bukkit.getOnlinePlayers().stream()
@@ -123,6 +122,14 @@ public class SeasonTabCompleter implements TabSubcommand {
                                 return suggestions.stream()
                                         .filter(n -> n.toLowerCase().startsWith(args[5].toLowerCase()))
                                         .toList();
+                            }
+                        }
+                        if (args.length == 7) {
+                            String subSub = args[4].toLowerCase();
+                            if (subSub.equals("standings-team")) {
+                                return List.of("<+/-points>");
+                            } else if (subSub.equals("standings")) {
+                                return List.of("<position>");
                             }
                         }
                         return List.of();

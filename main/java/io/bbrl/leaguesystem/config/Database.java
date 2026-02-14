@@ -779,7 +779,7 @@ public final class Database {
                 INSERT INTO race_team_results(league_id,season_key,race_name,team_id,points)
                 VALUES (?,?,?,?,?)
                 ON CONFLICT(league_id,season_key,race_name,team_id)
-                DO UPDATE SET points=excluded.points
+                DO UPDATE SET points=points+excluded.points
                 """)) {
             ps.setString(1, leagueId);
             ps.setString(2, season);

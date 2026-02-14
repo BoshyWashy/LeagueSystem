@@ -51,7 +51,7 @@ public class SpawnSubcommand implements LeagueCommand.Subcommand {
         boolean isOp = p.hasPermission("league.op");
 
         if (!isLeagueOwner && !isOp) {
-            sender.sendMessage("§cYou need permission 'league.leagueowner." + league.getId() + "' or 'league.op' to set spawn");
+            sender.sendMessage("§cYou do not have permission to set a league spawnpoint");
             return;
         }
 
@@ -83,7 +83,7 @@ public class SpawnSubcommand implements LeagueCommand.Subcommand {
         }
 
         if (!p.hasPermission("league.use") && !p.hasPermission("league.op")) {
-            sender.sendMessage("§cYou need permission 'league.use' to teleport to league spawn");
+            sender.sendMessage("§cYou do not have permission to use this command.");
             return;
         }
 

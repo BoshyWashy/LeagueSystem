@@ -45,7 +45,7 @@ public class SeasonSubcommand implements LeagueCommand.Subcommand {
             if (sender instanceof Player p) {
                 if (!p.hasPermission("league.op") &&
                         !p.hasPermission("league.leagueowner." + leagueId)) {
-                    sender.sendMessage("§cYou need permission 'league.leagueowner." + leagueId + "' or 'league.op' to create seasons");
+                    sender.sendMessage("§cYou do not have permission to create seasons");
                     return;
                 }
             }
@@ -89,9 +89,11 @@ public class SeasonSubcommand implements LeagueCommand.Subcommand {
         }
 
         if (args.length < 3) {
-            sender.sendMessage("§aSeason §l" + action + "§a – " +
+            String pri = league.getConfig().getPrimaryColor();
+            String sec = league.getConfig().getSecondaryColor();
+            sender.sendMessage(pri + "Season §l" + action + pri + "§a – " +
                     storage.listRaces(league, action).size() + " races recorded");
-            sender.sendMessage("§aCurrent season: " + (league.getCurrentSeason() != null ? league.getCurrentSeason() : "None"));
+            sender.sendMessage(pri + "Current season: " + sec + (league.getCurrentSeason() != null ? league.getCurrentSeason() : "None"));
             return;
         }
 
@@ -116,7 +118,7 @@ public class SeasonSubcommand implements LeagueCommand.Subcommand {
         if (sender instanceof Player p) {
             if (!p.hasPermission("league.op") &&
                     !p.hasPermission("league.leagueowner." + league.getId())) {
-                sender.sendMessage("§cYou need permission 'league.leagueowner." + league.getId() + "' or 'league.op' to delete seasons");
+                sender.sendMessage("§cYou do not have permission to delete seasons");
                 return;
             }
         }
@@ -129,7 +131,7 @@ public class SeasonSubcommand implements LeagueCommand.Subcommand {
         if (sender instanceof Player p) {
             if (!p.hasPermission("league.op") &&
                     !p.hasPermission("league.leagueowner." + league.getId())) {
-                sender.sendMessage("§cYou need permission 'league.leagueowner." + league.getId() + "' or 'league.op' to edit seasons");
+                sender.sendMessage("§cYou do not have permission to edit seasons");
                 return;
             }
         }
@@ -152,7 +154,7 @@ public class SeasonSubcommand implements LeagueCommand.Subcommand {
         if (sender instanceof Player p) {
             if (!p.hasPermission("league.op") &&
                     !p.hasPermission("league.leagueowner." + league.getId())) {
-                sender.sendMessage("§cYou need permission 'league.leagueowner." + league.getId() + "' or 'league.op' to modify races");
+                sender.sendMessage("§cYou do not have permission to modify races");
                 return;
             }
         }
@@ -306,6 +308,9 @@ public class SeasonSubcommand implements LeagueCommand.Subcommand {
     }
 
     private void handleRaceResults(CommandSender sender, League league, String season, String[] args) {
+        String pri = league.getConfig().getPrimaryColor();
+        String sec = league.getConfig().getSecondaryColor();
+
         if (args.length < 2) {
             sender.sendMessage("§cUsage: /league season <league> <season> race results <race>");
             return;
@@ -318,14 +323,14 @@ public class SeasonSubcommand implements LeagueCommand.Subcommand {
             return;
         }
 
-        sender.sendMessage("§7---- §aResults for §f" + raceName + "§7 ----");
-        sender.sendMessage("§7§o(Season: §7§o" + season + "§7§o)");
-        sender.sendMessage("§a======================================");
+        sender.sendMessage(pri + "---- " + sec + "Results for " + raceName + pri + " ----");
+        sender.sendMessage(pri + "§o(Season: " + sec + "§o" + season + pri + "§o)");
+        sender.sendMessage(pri + "======================================");
 
         int pos = 1;
         for (Map.Entry<String, Integer> e : results.entrySet()) {
             String playerName = getPlayerName(e.getKey());
-            sender.sendMessage("§a" + pos++ + ". §f" + playerName + " §a- " + e.getValue() + " pts");
+            sender.sendMessage(pri + "" + pos++ + ". " + sec + playerName + pri + " - " + e.getValue() + " pts");
         }
 
         Map<String, Object> fastestLap = storage.getFastestLap(league, season, raceName);
@@ -334,10 +339,10 @@ public class SeasonSubcommand implements LeagueCommand.Subcommand {
             int flPoints = (int) fastestLap.get("points");
             String flName = getPlayerName(flUuid);
             sender.sendMessage(" ");
-            sender.sendMessage("§e★ Fastest Lap: §f" + flName + " §e(+" + flPoints + " pts)");
+            sender.sendMessage(pri + "★ Fastest Lap: " + sec + flName + pri + " (+" + flPoints + " pts)");
         }
 
-        sender.sendMessage("§a======================================");
+        sender.sendMessage(pri + "======================================");
     }
 
     private void handleDriver(CommandSender sender, League league, String season, String[] args) {
@@ -349,7 +354,7 @@ public class SeasonSubcommand implements LeagueCommand.Subcommand {
         if (sender instanceof Player p) {
             if (!p.hasPermission("league.op") &&
                     !p.hasPermission("league.leagueowner." + league.getId())) {
-                sender.sendMessage("§cYou need permission 'league.leagueowner." + league.getId() + "' or 'league.op' to modify driver points");
+                sender.sendMessage("§cYou do not have permission to modify driver points");
                 return;
             }
         }
@@ -389,6 +394,8 @@ public class SeasonSubcommand implements LeagueCommand.Subcommand {
 
     private void handleStandings(CommandSender sender, League league, String season, String[] args) {
         String mode = args.length > 0 ? args[0].toLowerCase() : "individual";
+        String pri = league.getConfig().getPrimaryColor();
+        String sec = league.getConfig().getSecondaryColor();
 
         storage.saveChampionship(league, season, null);
 
@@ -398,7 +405,7 @@ public class SeasonSubcommand implements LeagueCommand.Subcommand {
 
         switch (mode) {
             case "individual" -> {
-                sender.sendMessage("§a-===- §fDriver Standings §a–§f " + season + "§a -===-");
+                sender.sendMessage(pri + "-===- " + sec + "Driver Standings " + pri + "–" + sec + " " + season + pri + " -===-");
                 sender.sendMessage(" ");
                 if (drivers.isEmpty()) {
                     sender.sendMessage("§cNo drivers in championship");
@@ -410,23 +417,23 @@ public class SeasonSubcommand implements LeagueCommand.Subcommand {
                         .limit(20)
                         .toList()) {
                     String playerName = getPlayerName(e.getKey());
-                    sender.sendMessage("§a" + pos + ". §f" + playerName + " §a-§f " + String.format("%.1f", e.getValue()) + "§a pts");
+                    sender.sendMessage(pri + "" + pos + ". " + sec + playerName + pri + " -" + sec + " " + String.format("%.1f", e.getValue()) + pri + " pts");
                     pos++;
                 }
                 sender.sendMessage(" ");
-                sender.sendMessage("§a======================================");
+                sender.sendMessage(pri + "======================================");
 
                 if (sender instanceof Player player) {
-                    TextComponent teamStandings = new TextComponent("§a[Click to view Team Standings]");
+                    TextComponent teamStandings = new TextComponent(pri + "[Click to view Team Standings]");
                     teamStandings.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/league " + league.getId() + " season " + season + " standings teams"));
                     player.spigot().sendMessage(teamStandings);
                 }
             }
             case "teams" -> {
-                sender.sendMessage("§a-===- §fTeam Standings §a–§f " + season + "§a -===-");
+                sender.sendMessage(pri + "-===- " + sec + "Team Standings " + pri + " –" + sec + " " + season + pri + " -===-");
                 sender.sendMessage(" ");
                 if (teams.isEmpty()) {
-                    sender.sendMessage("§cNo teams in championship");
+                    sender.sendMessage(pri + "No teams in championship :(");
                     return;
                 }
                 int pos = 1;
@@ -437,16 +444,16 @@ public class SeasonSubcommand implements LeagueCommand.Subcommand {
                     String teamId = e.getKey();
                     Optional<Team> teamOpt = manager.getTeam(league, teamId);
                     String displayName = teamOpt.map(Team::getName).orElse(teamId);
-                    String color = teamOpt.map(Team::getChatColor).orElse("§f");
+                    String teamColor = teamOpt.map(Team::getChatColor).orElse(sec);
 
-                    sender.sendMessage("§a" + pos + ". " + color + displayName + " §a-§f " + String.format("%.1f", e.getValue()) + "§a pts");
+                    sender.sendMessage(pri + "" + pos + ". " + teamColor + displayName + pri + "-" + sec + " " + String.format("%.1f", e.getValue()) + pri + " pts");
                     pos++;
                 }
                 sender.sendMessage(" ");
-                sender.sendMessage("§a======================================");
+                sender.sendMessage(pri + "======================================");
 
                 if (sender instanceof Player player) {
-                    TextComponent driverStandings = new TextComponent("§a[Click to view Driver Standings]");
+                    TextComponent driverStandings = new TextComponent(pri + "[Click to view Driver Standings]");
                     driverStandings.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/league " + league.getId() + " season " + season + " standings individual"));
                     player.spigot().sendMessage(driverStandings);
                 }

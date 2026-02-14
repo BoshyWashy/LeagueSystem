@@ -45,12 +45,12 @@ public class PointsScaleSubcommand implements LeagueCommand.Subcommand {
 
         if (action.equals("list")) {
             if (!hasUsePerm && !hasManagePerm) {
-                sender.sendMessage("§cYou need permission 'league.use' to view point scales");
+                sender.sendMessage("§cYou do not have permission to view point scales");
                 return;
             }
         } else {
             if (!hasManagePerm) {
-                sender.sendMessage("§cNo permission to modify point scales. You need 'league.leagueowner." + leagueId + "' or 'league.op'");
+                sender.sendMessage("§cYou do not have permission to modify point scales.");
                 return;
             }
         }

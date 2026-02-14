@@ -41,7 +41,7 @@ public class LeagueAdminCommand implements CommandExecutor, TabCompleter {
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (sender instanceof Player p) {
             if (!p.hasPermission("league.op") && !p.hasPermission("league.admin")) {
-                sender.sendMessage("§cYou need permission 'league.admin' or 'league.op' to use this command");
+                sender.sendMessage("§cYou do not have permission to use this command");
                 return true;
             }
         }
@@ -184,7 +184,7 @@ public class LeagueAdminCommand implements CommandExecutor, TabCompleter {
             boolean isOp = p.hasPermission("league.op");
 
             if (!isLeagueOwner && !isOp) {
-                sender.sendMessage("§cYou need permission 'league.leagueowner." + leagueId + "' or 'league.op' to edit teams");
+                sender.sendMessage("§cYou do not have permission to edit other teams");
                 return;
             }
         }
