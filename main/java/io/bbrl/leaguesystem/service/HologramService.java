@@ -8,27 +8,30 @@ import org.bukkit.plugin.java.JavaPlugin;
 import java.util.*;
 
 /**
- * Lightweight DecentHolograms integration stub.
- * Reads standings straight from DB – no files, no caches.
+ * DecentHolograms integration for league leaderboards.
+ * Manages holographic displays of standings and results.
  */
 public class HologramService {
     private final JavaPlugin plugin;
     private final LeagueManager manager;
     private final LeagueStorage storage;
+    private final LeaderboardManager leaderboardManager;
 
-    public HologramService(JavaPlugin plugin, LeagueManager manager) {
+    public HologramService(JavaPlugin plugin, LeagueManager manager, LeaderboardManager leaderboardManager) {
         this.plugin = plugin;
         this.manager = manager;
         this.storage = manager.getStorage();
+        this.leaderboardManager = leaderboardManager;
     }
 
     public void updateLeagueHolograms(League league) {
         if (!league.getConfig().isHologramsEnabled()) return;
 
-        // Fresh from DB
-        Map<String, Double> drivers = (Map<String, Double>) storage.loadChampionship(league, league.getCurrentSeason()).get("drivers");
-        Map<String, Double> teams   = (Map<String, Double>) storage.loadChampionship(league, league.getCurrentSeason()).get("teams");
+        // Refresh all leaderboards for this league
+        leaderboardManager.refreshAllLeaderboards(league);
+    }
 
-        // TODO: feed drivers + teams into DecentHolograms API
+    public LeaderboardManager getLeaderboardManager() {
+        return leaderboardManager;
     }
 }

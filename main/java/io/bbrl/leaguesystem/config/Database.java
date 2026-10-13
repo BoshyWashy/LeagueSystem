@@ -1,17 +1,21 @@
+/*
 package io.bbrl.leaguesystem.config;
 
 import io.bbrl.leaguesystem.model.*;
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
 import org.bukkit.OfflinePlayer;
 
 import java.io.File;
 import java.sql.*;
 import java.util.*;
 
+*/
 /**
  * SINGLE SOURCE OF TRUTH – every mutation is written to the DB immediately.
  * No caches, no maps, no "save" methods – reads are always fresh SQL.
- */
+ *//*
+
 public final class Database {
 
     private final Connection conn;
@@ -27,15 +31,22 @@ public final class Database {
         }
     }
 
-    /* ---------------------------------------------------------- */
-    /*  schema – run once                                           */
-    /* ---------------------------------------------------------- */
+    */
+/* ---------------------------------------------------------- *//*
+
+    */
+/*  schema – run once                                           *//*
+
+    */
+/* ---------------------------------------------------------- *//*
+
     private void createSchema() throws SQLException {
         try (Statement st = conn.createStatement()) {
             st.execute("""
                 CREATE TABLE IF NOT EXISTS leagues(
                   id            TEXT PRIMARY KEY,
                   name          TEXT NOT NULL,
+                  description   TEXT DEFAULT '',
                   max_team_own  INTEGER DEFAULT 1,
                   max_drivers   INTEGER DEFAULT 3,
                   max_reserves  INTEGER DEFAULT 1,
@@ -54,7 +65,9 @@ public final class Database {
                   spawn_z       REAL DEFAULT 0.0,
                   spawn_yaw     REAL DEFAULT 0.0,
                   spawn_pitch   REAL DEFAULT 0.0,
-                  spawn_set     INTEGER DEFAULT 0
+                  spawn_set     INTEGER DEFAULT 0,
+                  holo_leaderboard_length INTEGER DEFAULT 10,
+                  holo_y_offset REAL DEFAULT 0.0
                 );
                 """);
 
@@ -63,6 +76,7 @@ public final class Database {
                   league_id  TEXT,
                   season_key TEXT,
                   race_count TEXT,
+                  is_finished INTEGER DEFAULT 0,
                   PRIMARY KEY (league_id, season_key),
                   FOREIGN KEY (league_id) REFERENCES leagues(id) ON DELETE CASCADE
                 );
@@ -193,12 +207,38 @@ public final class Database {
                   FOREIGN KEY (league_id, season_key) REFERENCES seasons(league_id, season_key) ON DELETE CASCADE
                 );
                 """);
+
+            st.execute("""
+                CREATE TABLE IF NOT EXISTS leaderboards(
+                  id          TEXT,
+                  league_id   TEXT,
+                  name        TEXT,
+                  type        TEXT,
+                  season_key  TEXT,
+                  race_name   TEXT,
+                  world       TEXT,
+                  x           REAL,
+                  y           REAL,
+                  z           REAL,
+                  yaw         REAL,
+                  pitch       REAL,
+                  creator_uuid TEXT,
+                  PRIMARY KEY (id, league_id),
+                  FOREIGN KEY (league_id) REFERENCES leagues(id) ON DELETE CASCADE
+                );
+                """);
         }
     }
 
-    /* ---------------------------------------------------------- */
-    /*  migrations – add new columns to existing tables             */
-    /* ---------------------------------------------------------- */
+    */
+/* ---------------------------------------------------------- *//*
+
+    */
+/*  migrations – add new columns to existing tables             *//*
+
+    */
+/* ---------------------------------------------------------- *//*
+
     private void runMigrations() throws SQLException {
         // Migration 1: Add league color columns
         try {
@@ -343,11 +383,90 @@ public final class Database {
         } catch (SQLException e) {
             e.printStackTrace();
         }
+
+        // Migration 10: Add hologram leaderboard config columns
+        try {
+            conn.createStatement().execute("SELECT holo_leaderboard_length FROM leagues LIMIT 1");
+        } catch (SQLException e) {
+            try {
+                conn.createStatement().execute("ALTER TABLE leagues ADD COLUMN holo_leaderboard_length INTEGER DEFAULT 10");
+                System.out.println("[LeagueSystem] Migration: Added holo_leaderboard_length column to leagues table");
+            } catch (SQLException ex) {
+                ex.printStackTrace();
+            }
+        }
+
+        try {
+            conn.createStatement().execute("SELECT holo_y_offset FROM leagues LIMIT 1");
+        } catch (SQLException e) {
+            try {
+                conn.createStatement().execute("ALTER TABLE leagues ADD COLUMN holo_y_offset REAL DEFAULT 0.0");
+                System.out.println("[LeagueSystem] Migration: Added holo_y_offset column to leagues table");
+            } catch (SQLException ex) {
+                ex.printStackTrace();
+            }
+        }
+
+        // Migration 11: Create leaderboards table
+        try {
+            conn.createStatement().execute("""
+                CREATE TABLE IF NOT EXISTS leaderboards(
+                  id          TEXT,
+                  league_id   TEXT,
+                  name        TEXT,
+                  type        TEXT,
+                  season_key  TEXT,
+                  race_name   TEXT,
+                  world       TEXT,
+                  x           REAL,
+                  y           REAL,
+                  z           REAL,
+                  yaw         REAL,
+                  pitch       REAL,
+                  creator_uuid TEXT,
+                  PRIMARY KEY (id, league_id),
+                  FOREIGN KEY (league_id) REFERENCES leagues(id) ON DELETE CASCADE
+                );
+                """);
+            System.out.println("[LeagueSystem] Migration: Created leaderboards table");
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+        // Migration 12: Add description column to leagues
+        try {
+            conn.createStatement().execute("SELECT description FROM leagues LIMIT 1");
+        } catch (SQLException e) {
+            try {
+                conn.createStatement().execute("ALTER TABLE leagues ADD COLUMN description TEXT DEFAULT ''");
+                System.out.println("[LeagueSystem] Migration: Added description column to leagues table");
+            } catch (SQLException ex) {
+                ex.printStackTrace();
+            }
+        }
+
+        // Migration 13: Add is_finished column to seasons
+        try {
+            conn.createStatement().execute("SELECT is_finished FROM seasons LIMIT 1");
+        } catch (SQLException e) {
+            try {
+                conn.createStatement().execute("ALTER TABLE seasons ADD COLUMN is_finished INTEGER DEFAULT 0");
+                System.out.println("[LeagueSystem] Migration: Added is_finished column to seasons table");
+            } catch (SQLException ex) {
+                ex.printStackTrace();
+            }
+        }
     }
 
-    /* ---------------------------------------------------------- */
-    /*  league                                                     */
-    /* ---------------------------------------------------------- */
+    */
+/* ---------------------------------------------------------- *//*
+
+    */
+/*  league                                                     *//*
+
+    */
+/* ---------------------------------------------------------- *//*
+
     public List<League> allLeagues() {
         List<League> out = new ArrayList<>();
         try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM leagues");
@@ -381,13 +500,16 @@ public final class Database {
 
     private void loadSeasonsIntoLeague(League l) throws SQLException {
         try (PreparedStatement ps = conn.prepareStatement(
-                "SELECT season_key, race_count FROM seasons WHERE league_id=?")) {
+                "SELECT season_key, race_count, is_finished FROM seasons WHERE league_id=?")) {
             ps.setString(1, l.getId());
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     String key = rs.getString("season_key");
                     Season season = new Season(key);
                     l.getSeasons().put(key, season);
+                    if (rs.getInt("is_finished") == 1) {
+                        l.finishSeason(key);
+                    }
                 }
             }
         }
@@ -395,10 +517,11 @@ public final class Database {
 
     public void saveLeague(League l) {
         try (PreparedStatement ps = conn.prepareStatement("""
-                INSERT INTO leagues(id,name,max_team_own,max_drivers,max_reserves,point_system,holograms,holo_refresh,strike_races,current_season,primary_color,secondary_color,allow_anyone_create_team,fastest_lap_points,spawn_world,spawn_x,spawn_y,spawn_z,spawn_yaw,spawn_pitch,spawn_set)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                INSERT INTO leagues(id,name,description,max_team_own,max_drivers,max_reserves,point_system,holograms,holo_refresh,strike_races,current_season,primary_color,secondary_color,allow_anyone_create_team,fastest_lap_points,spawn_world,spawn_x,spawn_y,spawn_z,spawn_yaw,spawn_pitch,spawn_set,holo_leaderboard_length,holo_y_offset)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(id) DO UPDATE SET
                   name=excluded.name,
+                  description=excluded.description,
                   max_team_own=excluded.max_team_own,
                   max_drivers=excluded.max_drivers,
                   max_reserves=excluded.max_reserves,
@@ -417,30 +540,35 @@ public final class Database {
                   spawn_z=excluded.spawn_z,
                   spawn_yaw=excluded.spawn_yaw,
                   spawn_pitch=excluded.spawn_pitch,
-                  spawn_set=excluded.spawn_set
+                  spawn_set=excluded.spawn_set,
+                  holo_leaderboard_length=excluded.holo_leaderboard_length,
+                  holo_y_offset=excluded.holo_y_offset
                 """)) {
             ps.setString(1, l.getId());
             ps.setString(2, l.getName());
+            ps.setString(3, l.getDescription());
             LeagueConfig c = l.getConfig();
-            ps.setInt(3, c.getMaxTeamOwnership());
-            ps.setInt(4, c.getMaxDriversPerTeam());
-            ps.setInt(5, c.getMaxReservesPerTeam());
-            ps.setString(6, c.getPointSystem());
-            ps.setInt(7, c.isHologramsEnabled() ? 1 : 0);
-            ps.setInt(8, c.getHologramRefreshSeconds());
-            ps.setInt(9, c.getStrikeRaces());
-            ps.setString(10, l.getCurrentSeason());
-            ps.setString(11, c.getPrimaryColor());
-            ps.setString(12, c.getSecondaryColor());
-            ps.setInt(13, c.isAllowAnyoneCreateTeam() ? 1 : 0);
-            ps.setInt(14, c.getFastestLapPoints());
-            ps.setString(15, c.getSpawnWorld());
-            ps.setDouble(16, c.getSpawnX());
-            ps.setDouble(17, c.getSpawnY());
-            ps.setDouble(18, c.getSpawnZ());
-            ps.setFloat(19, c.getSpawnYaw());
-            ps.setFloat(20, c.getSpawnPitch());
-            ps.setInt(21, c.isSpawnSet() ? 1 : 0);
+            ps.setInt(4, c.getMaxTeamOwnership());
+            ps.setInt(5, c.getMaxDriversPerTeam());
+            ps.setInt(6, c.getMaxReservesPerTeam());
+            ps.setString(7, c.getPointSystem());
+            ps.setInt(8, c.isHologramsEnabled() ? 1 : 0);
+            ps.setInt(9, c.getHologramRefreshSeconds());
+            ps.setInt(10, c.getStrikeRaces());
+            ps.setString(11, l.getCurrentSeason());
+            ps.setString(12, c.getPrimaryColor());
+            ps.setString(13, c.getSecondaryColor());
+            ps.setInt(14, c.isAllowAnyoneCreateTeam() ? 1 : 0);
+            ps.setInt(15, c.getFastestLapPoints());
+            ps.setString(16, c.getSpawnWorld());
+            ps.setDouble(17, c.getSpawnX());
+            ps.setDouble(18, c.getSpawnY());
+            ps.setDouble(19, c.getSpawnZ());
+            ps.setFloat(20, c.getSpawnYaw());
+            ps.setFloat(21, c.getSpawnPitch());
+            ps.setInt(22, c.isSpawnSet() ? 1 : 0);
+            ps.setInt(23, c.getHologramLeaderboardLength());
+            ps.setDouble(24, c.getHologramYOffset());
             ps.executeUpdate();
         } catch (SQLException e) {
             e.printStackTrace();
@@ -467,7 +595,7 @@ public final class Database {
                 ps.executeUpdate();
             }
             String[] tables = {"seasons", "teams", "team_owners", "team_members", "races", "race_results",
-                    "race_team_results", "fastest_laps", "championship", "team_championship", "point_scales", "manual_adjustments"};
+                    "race_team_results", "fastest_laps", "championship", "team_championship", "point_scales", "manual_adjustments", "leaderboards"};
             for (String table : tables) {
                 try (PreparedStatement ps = conn.prepareStatement(
                         "UPDATE " + table + " SET league_id=? WHERE league_id=?")) {
@@ -485,12 +613,18 @@ public final class Database {
         }
     }
 
-    /* ---------------------------------------------------------- */
-    /*  seasons                                                    */
-    /* ---------------------------------------------------------- */
+    */
+/* ---------------------------------------------------------- *//*
+
+    */
+/*  seasons                                                    *//*
+
+    */
+/* ---------------------------------------------------------- *//*
+
     public void createSeason(String leagueId, String key, String raceCount) {
         try (PreparedStatement ps = conn.prepareStatement(
-                "INSERT INTO seasons(league_id,season_key,race_count) VALUES (?,?,?) ON CONFLICT DO NOTHING")) {
+                "INSERT INTO seasons(league_id,season_key,race_count,is_finished) VALUES (?,?,?,0) ON CONFLICT DO NOTHING")) {
             ps.setString(1, leagueId);
             ps.setString(2, key);
             ps.setString(3, raceCount);
@@ -511,6 +645,78 @@ public final class Database {
         }
     }
 
+    public void renameSeason(String leagueId, String oldKey, String newKey) {
+        try {
+            conn.setAutoCommit(false);
+
+            // Update seasons table
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE seasons SET season_key=? WHERE league_id=? AND season_key=?")) {
+                ps.setString(1, newKey);
+                ps.setString(2, leagueId);
+                ps.setString(3, oldKey);
+                ps.executeUpdate();
+            }
+
+            // Update all related tables
+            String[] tables = {"races", "race_results", "race_team_results", "fastest_laps",
+                    "championship", "team_championship", "manual_adjustments"};
+            for (String table : tables) {
+                try (PreparedStatement ps = conn.prepareStatement(
+                        "UPDATE " + table + " SET season_key=? WHERE league_id=? AND season_key=?")) {
+                    ps.setString(1, newKey);
+                    ps.setString(2, leagueId);
+                    ps.setString(3, oldKey);
+                    ps.executeUpdate();
+                }
+            }
+
+            // Update leaderboards that reference this season
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE leaderboards SET season_key=? WHERE league_id=? AND season_key=?")) {
+                ps.setString(1, newKey);
+                ps.setString(2, leagueId);
+                ps.setString(3, oldKey);
+                ps.executeUpdate();
+            }
+
+            conn.commit();
+        } catch (SQLException e) {
+            e.printStackTrace();
+            try { conn.rollback(); } catch (SQLException ignored) {}
+        } finally {
+            try { conn.setAutoCommit(true); } catch (SQLException ignored) {}
+        }
+    }
+
+    public void setSeasonFinished(String leagueId, String key, boolean finished) {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "UPDATE seasons SET is_finished=? WHERE league_id=? AND season_key=?")) {
+            ps.setInt(1, finished ? 1 : 0);
+            ps.setString(2, leagueId);
+            ps.setString(3, key);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public boolean isSeasonFinished(String leagueId, String key) {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT is_finished FROM seasons WHERE league_id=? AND season_key=?")) {
+            ps.setString(1, leagueId);
+            ps.setString(2, key);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt("is_finished") == 1;
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+
     public void setSeasonRaceCount(String leagueId, String key, String display) {
         try (PreparedStatement ps = conn.prepareStatement(
                 "UPDATE seasons SET race_count=? WHERE league_id=? AND season_key=?")) {
@@ -523,9 +729,15 @@ public final class Database {
         }
     }
 
-    /* ---------------------------------------------------------- */
-    /*  teams                                                      */
-    /* ---------------------------------------------------------- */
+    */
+/* ---------------------------------------------------------- *//*
+
+    */
+/*  teams                                                      *//*
+
+    */
+/* ---------------------------------------------------------- *//*
+
     public Map<String, Team> loadTeams(String leagueId) {
         Map<String, Team> map = new LinkedHashMap<>();
         try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM teams WHERE league_id=?")) {
@@ -700,9 +912,15 @@ public final class Database {
         }
     }
 
-    /* ---------------------------------------------------------- */
-    /*  races & results                                            */
-    /* ---------------------------------------------------------- */
+    */
+/* ---------------------------------------------------------- *//*
+
+    */
+/*  races & results                                            *//*
+
+    */
+/* ---------------------------------------------------------- *//*
+
     public void saveRace(String leagueId, String season, String raceName) {
         try (PreparedStatement ps = conn.prepareStatement(
                 "INSERT INTO races(league_id,season_key,race_name) VALUES (?,?,?) ON CONFLICT DO NOTHING")) {
@@ -716,14 +934,51 @@ public final class Database {
     }
 
     public void deleteRace(String leagueId, String season, String raceName) {
-        try (PreparedStatement ps = conn.prepareStatement(
-                "DELETE FROM races WHERE league_id=? AND season_key=? AND race_name=?")) {
-            ps.setString(1, leagueId);
-            ps.setString(2, season);
-            ps.setString(3, raceName);
-            ps.executeUpdate();
+        try {
+            conn.setAutoCommit(false);
+
+            // Delete race results first
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "DELETE FROM race_results WHERE league_id=? AND season_key=? AND race_name=?")) {
+                ps.setString(1, leagueId);
+                ps.setString(2, season);
+                ps.setString(3, raceName);
+                ps.executeUpdate();
+            }
+
+            // Delete race team results
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "DELETE FROM race_team_results WHERE league_id=? AND season_key=? AND race_name=?")) {
+                ps.setString(1, leagueId);
+                ps.setString(2, season);
+                ps.setString(3, raceName);
+                ps.executeUpdate();
+            }
+
+            // Delete fastest lap
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "DELETE FROM fastest_laps WHERE league_id=? AND season_key=? AND race_name=?")) {
+                ps.setString(1, leagueId);
+                ps.setString(2, season);
+                ps.setString(3, raceName);
+                ps.executeUpdate();
+            }
+
+            // Delete the race itself
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "DELETE FROM races WHERE league_id=? AND season_key=? AND race_name=?")) {
+                ps.setString(1, leagueId);
+                ps.setString(2, season);
+                ps.setString(3, raceName);
+                ps.executeUpdate();
+            }
+
+            conn.commit();
         } catch (SQLException e) {
             e.printStackTrace();
+            try { conn.rollback(); } catch (SQLException ignored) {}
+        } finally {
+            try { conn.setAutoCommit(true); } catch (SQLException ignored) {}
         }
     }
 
@@ -779,7 +1034,7 @@ public final class Database {
                 INSERT INTO race_team_results(league_id,season_key,race_name,team_id,points)
                 VALUES (?,?,?,?,?)
                 ON CONFLICT(league_id,season_key,race_name,team_id)
-                DO UPDATE SET points=points+excluded.points
+                DO UPDATE SET points=excluded.points
                 """)) {
             ps.setString(1, leagueId);
             ps.setString(2, season);
@@ -808,9 +1063,31 @@ public final class Database {
         return map;
     }
 
-    /* ---------------------------------------------------------- */
-    /*  fastest lap                                                */
-    /* ---------------------------------------------------------- */
+    public Map<String, Double> getRaceTeamResults(String leagueId, String season, String raceName) {
+        Map<String, Double> map = new LinkedHashMap<>();
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT team_id,points FROM race_team_results WHERE league_id=? AND season_key=? AND race_name=? ORDER BY points DESC")) {
+            ps.setString(1, leagueId);
+            ps.setString(2, season);
+            ps.setString(3, raceName);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) map.put(rs.getString(1), rs.getDouble(2));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return map;
+    }
+
+    */
+/* ---------------------------------------------------------- *//*
+
+    */
+/*  fastest lap                                                *//*
+
+    */
+/* ---------------------------------------------------------- *//*
+
     public void saveFastestLap(String leagueId, String season, String raceName, String uuid, int points) {
         try (PreparedStatement ps = conn.prepareStatement("""
                 INSERT INTO fastest_laps(league_id,season_key,race_name,uuid,points)
@@ -860,9 +1137,15 @@ public final class Database {
         return result;
     }
 
-    /* ---------------------------------------------------------- */
-    /*  manual adjustments                                         */
-    /* ---------------------------------------------------------- */
+    */
+/* ---------------------------------------------------------- *//*
+
+    */
+/*  manual adjustments                                         *//*
+
+    */
+/* ---------------------------------------------------------- *//*
+
     public void addManualAdjustment(String leagueId, String season, String uuid, double delta) {
         double current = getManualAdjustment(leagueId, season, uuid);
         double newTotal = current + delta;
@@ -917,9 +1200,15 @@ public final class Database {
         return map;
     }
 
-    /* ---------------------------------------------------------- */
-    /*  championship                                               */
-    /* ---------------------------------------------------------- */
+    */
+/* ---------------------------------------------------------- *//*
+
+    */
+/*  championship                                               *//*
+
+    */
+/* ---------------------------------------------------------- *//*
+
     public void rebuildChampionship(String leagueId, String season) {
         try {
             conn.setAutoCommit(false);
@@ -935,7 +1224,9 @@ public final class Database {
                 delT.executeUpdate();
             }
 
-            /* driver totals - aggregate all race results */
+            */
+/* driver totals - aggregate all race results *//*
+
             Map<String, Double> driverTotals = new HashMap<>();
             try (PreparedStatement ps = conn.prepareStatement(
                     "SELECT uuid, SUM(points) FROM race_results WHERE league_id=? AND season_key=? GROUP BY uuid")) {
@@ -946,7 +1237,9 @@ public final class Database {
                 }
             }
 
-            /* ADD fastest lap points */
+            */
+/* ADD fastest lap points *//*
+
             try (PreparedStatement ps = conn.prepareStatement(
                     "SELECT uuid, points FROM fastest_laps WHERE league_id=? AND season_key=?")) {
                 ps.setString(1, leagueId);
@@ -960,7 +1253,9 @@ public final class Database {
                 }
             }
 
-            /* ADD manual adjustments to driver totals */
+            */
+/* ADD manual adjustments to driver totals *//*
+
             Map<String, Double> adjustments = getAllManualAdjustments(leagueId, season);
             for (Map.Entry<String, Double> adj : adjustments.entrySet()) {
                 driverTotals.merge(adj.getKey(), adj.getValue(), Double::sum);
@@ -980,7 +1275,9 @@ public final class Database {
                 ins.executeBatch();
             }
 
-            /* team totals - aggregate driver points by team membership */
+            */
+/* team totals - aggregate driver points by team membership *//*
+
             Map<String, Team> teams = loadTeams(leagueId);
             Map<String, Double> teamTotals = new HashMap<>();
             for (Map.Entry<String, Double> e : driverTotals.entrySet()) {
@@ -992,7 +1289,9 @@ public final class Database {
                 }
             }
 
-            /* Add race_team_results to team totals */
+            */
+/* Add race_team_results to team totals *//*
+
             try (PreparedStatement ps = conn.prepareStatement(
                     "SELECT team_id, SUM(points) as total FROM race_team_results WHERE league_id=? AND season_key=? GROUP BY team_id")) {
                 ps.setString(1, leagueId);
@@ -1064,9 +1363,15 @@ public final class Database {
         return map;
     }
 
-    /* ---------------------------------------------------------- */
-    /*  point scales                                               */
-    /* ---------------------------------------------------------- */
+    */
+/* ---------------------------------------------------------- *//*
+
+    */
+/*  point scales                                               *//*
+
+    */
+/* ---------------------------------------------------------- *//*
+
     public void savePointScales(String leagueId, Map<String, Map<Integer, Integer>> scales) {
         try {
             conn.setAutoCommit(false);
@@ -1124,13 +1429,123 @@ public final class Database {
         return out;
     }
 
-    /* ---------------------------------------------------------- */
-    /*  helpers                                                    */
-    /* ---------------------------------------------------------- */
+    */
+/* ---------------------------------------------------------- *//*
+
+    */
+/*  leaderboards                                               *//*
+
+    */
+/* ---------------------------------------------------------- *//*
+
+    public Map<String, Leaderboard> loadLeaderboards(String leagueId) {
+        Map<String, Leaderboard> map = new LinkedHashMap<>();
+        try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM leaderboards WHERE league_id=?")) {
+            ps.setString(1, leagueId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String worldName = rs.getString("world");
+                    Location loc = null;
+                    if (worldName != null) {
+                        org.bukkit.World world = Bukkit.getWorld(worldName);
+                        if (world != null) {
+                            loc = new Location(world, rs.getDouble("x"), rs.getDouble("y"),
+                                    rs.getDouble("z"), rs.getFloat("yaw"), rs.getFloat("pitch"));
+                        }
+                    }
+
+                    LeaderboardType type;
+                    try {
+                        type = LeaderboardType.valueOf(rs.getString("type"));
+                    } catch (Exception e) {
+                        continue; // Skip invalid types
+                    }
+
+                    String raceName = rs.getString("race_name");
+
+                    Leaderboard lb = new Leaderboard(
+                            rs.getString("id"),
+                            rs.getString("name"),
+                            type,
+                            rs.getString("season_key"),
+                            raceName,
+                            loc,
+                            UUID.fromString(rs.getString("creator_uuid"))
+                    );
+                    map.put(lb.getId(), lb);
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return map;
+    }
+
+    public void saveLeaderboards(String leagueId, Map<String, Leaderboard> leaderboards) {
+        try {
+            conn.setAutoCommit(false);
+            try (PreparedStatement del = conn.prepareStatement("DELETE FROM leaderboards WHERE league_id=?")) {
+                del.setString(1, leagueId);
+                del.executeUpdate();
+            }
+            try (PreparedStatement ins = conn.prepareStatement(
+                    "INSERT INTO leaderboards(id,league_id,name,type,season_key,race_name,world,x,y,z,yaw,pitch,creator_uuid) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
+                for (Leaderboard lb : leaderboards.values()) {
+                    ins.setString(1, lb.getId());
+                    ins.setString(2, leagueId);
+                    ins.setString(3, lb.getName());
+                    ins.setString(4, lb.getType().name());
+                    ins.setString(5, lb.getSeasonKey());
+                    ins.setString(6, lb.getRaceName());
+                    if (lb.getLocation() != null) {
+                        ins.setString(7, lb.getLocation().getWorld().getName());
+                        ins.setDouble(8, lb.getLocation().getX());
+                        ins.setDouble(9, lb.getLocation().getY());
+                        ins.setDouble(10, lb.getLocation().getZ());
+                        ins.setFloat(11, lb.getLocation().getYaw());
+                        ins.setFloat(12, lb.getLocation().getPitch());
+                    } else {
+                        ins.setNull(7, Types.VARCHAR);
+                        ins.setDouble(8, 0);
+                        ins.setDouble(9, 0);
+                        ins.setDouble(10, 0);
+                        ins.setFloat(11, 0);
+                        ins.setFloat(12, 0);
+                    }
+                    ins.setString(13, lb.getCreatorUuid().toString());
+                    ins.addBatch();
+                }
+                ins.executeBatch();
+            }
+            conn.commit();
+        } catch (SQLException e) {
+            e.printStackTrace();
+            try { conn.rollback(); } catch (SQLException ignored) {}
+        } finally {
+            try { conn.setAutoCommit(true); } catch (SQLException ignored) {}
+        }
+    }
+
+    */
+/* ---------------------------------------------------------- *//*
+
+    */
+/*  helpers                                                    *//*
+
+    */
+/* ---------------------------------------------------------- *//*
+
     private League buildLeague(ResultSet rs) throws SQLException {
         League l = new League();
         l.setId(rs.getString("id"));
         l.setName(rs.getString("name"));
+
+        try {
+            l.setDescription(rs.getString("description"));
+        } catch (SQLException e) {
+            l.setDescription("");
+        }
+
         LeagueConfig c = new LeagueConfig();
         c.setMaxTeamOwnership(rs.getInt("max_team_own"));
         c.setMaxDriversPerTeam(rs.getInt("max_drivers"));
@@ -1173,9 +1588,22 @@ public final class Database {
             c.setSpawnSet(false);
         }
 
+        try {
+            c.setHologramLeaderboardLength(rs.getInt("holo_leaderboard_length"));
+        } catch (SQLException e) {
+            c.setHologramLeaderboardLength(10);
+        }
+
+        try {
+            c.setHologramYOffset(rs.getDouble("holo_y_offset"));
+        } catch (SQLException e) {
+            c.setHologramYOffset(0.0);
+        }
+
         l.setConfig(c);
         l.setCurrentSeason(rs.getString("current_season"));
         c.getCustomScales().putAll(loadPointScales(l.getId()));
         return l;
     }
 }
+*/

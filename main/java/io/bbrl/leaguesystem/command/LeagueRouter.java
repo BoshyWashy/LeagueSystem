@@ -3,6 +3,7 @@ package io.bbrl.leaguesystem.command;
 import io.bbrl.leaguesystem.command.subcommands.*;
 import io.bbrl.leaguesystem.model.League;
 import io.bbrl.leaguesystem.service.HologramService;
+import io.bbrl.leaguesystem.service.LeaderboardManager;
 import io.bbrl.leaguesystem.service.LeagueManager;
 import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
@@ -14,15 +15,17 @@ public class LeagueRouter implements LeagueCommand.Subcommand {
 
     private final Map<String, LeagueCommand.Subcommand> subcommands = new HashMap<>();
     private final LeagueManager manager;
+    private final LeaderboardManager leaderboardManager;
 
-    public LeagueRouter(LeagueManager manager, HologramService hologramService) {
+    public LeagueRouter(LeagueManager manager, HologramService hologramService, LeaderboardManager leaderboardManager) {
         this.manager = manager;
+        this.leaderboardManager = leaderboardManager;
 
         subcommands.put("info", new InfoSubcommand(manager));
         subcommands.put("option", new OptionSubcommand(manager));
         subcommands.put("team", new TeamSubcommand(manager));
         subcommands.put("points", new PointsScaleSubcommand(manager));
-        subcommands.put("season", new SeasonSubcommand(manager));
+        subcommands.put("season", new SeasonSubcommand(manager, leaderboardManager));
     }
 
     @Override
@@ -38,23 +41,9 @@ public class LeagueRouter implements LeagueCommand.Subcommand {
             return;
         }
 
-        if (args[1].equalsIgnoreCase("team") && args.length >= 4 && args[3].equalsIgnoreCase("join")) {
-            if (!(sender instanceof Player)) {
-                sender.sendMessage("Only players can join teams");
-                return;
-            }
-            Player p = (Player) sender;
-            String teamId = args[2].toLowerCase();
-            League league = ol.get();
-            if (!p.hasPermission("bbrl.op") && !LeagueManager.getInstance().hasInvite(league, teamId, p.getUniqueId().toString())) {
-                sender.sendMessage("§cUnfortunately you haven't been invited to this team yet :(");
-                return;
-            }
-            LeagueManager.getInstance().consumeInvite(league, teamId, p.getUniqueId().toString());
-            LeagueManager.getInstance().addPlayerToTeam(league, teamId, p.getUniqueId().toString());
-            sender.sendMessage("§aJoined team " + teamId);
-            return;
-        }
+        // FIX: Removed the hardcoded team join interception here.
+        // The proper invite handling is done in TeamSubcommand.handleJoin()
+        // which correctly checks permissions and consumes invites.
 
         String subKey = args[1].toLowerCase();
         LeagueCommand.Subcommand sc = subcommands.get(subKey);

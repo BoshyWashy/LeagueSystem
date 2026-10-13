@@ -21,3 +21,11 @@ default-league-secondary-color: "§f"  # White
 
 # Logging verbosity (info, debug, warn)
 log-level: info
+
+# Leaderboard hologram settings
+# Number of entries to show in leaderboard holograms (default: 10)
+hologram-leaderboard-length: 10
+
+# Y-axis offset for leaderboard holograms (default: 0.0)
+# Positive values move hologram up, negative moves down
+hologram-y-offset: 0.0

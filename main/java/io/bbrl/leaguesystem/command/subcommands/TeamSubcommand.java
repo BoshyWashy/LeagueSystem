@@ -113,8 +113,13 @@ public class TeamSubcommand implements LeagueCommand.Subcommand {
         for (Team team : teams.values()) {
             String colorName = COLOUR_NAME_MAP.getOrDefault(team.getHexColor(), "white");
             String ownerName = getPlayerName(team.getOwnerUuid());
+
+            // Get current season points
+            double currentPoints = manager.getTeamPoints(league, team.getId());
+            String pointsStr = league.getCurrentSeason() != null ? " §7(" + String.format("%.1f", currentPoints) + " pts)" : "";
+
             sender.sendMessage((++count) + ". " + team.getChatColor() + team.getName() +
-                    " §r§7(Owner: " + ownerName + ")");
+                    " §r§7(Owner: " + ownerName + ")" + pointsStr);
         }
         sender.sendMessage(league.getConfig().getPrimaryColor() + "=========================================");
         sender.sendMessage(league.getConfig().getPrimaryColor() + "Total teams: §f" + count);
@@ -130,11 +135,22 @@ public class TeamSubcommand implements LeagueCommand.Subcommand {
         Player p = (Player) sender;
         String ownerUuid = p.getUniqueId().toString();
 
+        // Check if player is league owner - league owners can always create teams in their own league
+        boolean isLeagueOwner = p.hasPermission("league.leagueowner." + league.getId());
+        boolean isOp = p.hasPermission("league.op");
+
         if (!league.getConfig().isAllowAnyoneCreateTeam()) {
-            if (!p.hasPermission("league.op") &&
-                    !p.hasPermission("league.leagueowner." + league.getId()) &&
+            if (!isOp && !isLeagueOwner &&
                     !p.hasPermission("league.teamcreate." + league.getId())) {
                 sender.sendMessage("§cYou do not have permission to create teams in this league");
+                return;
+            }
+        }
+
+        // Check team ownership limits - league owners bypass limits in their own league
+        if (!isLeagueOwner && !isOp) {
+            if (!manager.canCreateTeam(league, ownerUuid)) {
+                sender.sendMessage("§cYou cannot own more teams in this league (max: " + league.getConfig().getMaxTeamOwnership() + ")");
                 return;
             }
         }
@@ -146,11 +162,6 @@ public class TeamSubcommand implements LeagueCommand.Subcommand {
         String displayName = rest[0];
         String colourWord = (rest.length > 1) ? rest[1].toLowerCase() : "white";
         String code = COLOUR_CODE_MAP.getOrDefault(colourWord, "§f");
-
-        if (!manager.canCreateTeam(league, ownerUuid)) {
-            sender.sendMessage("§cYou cannot own more teams in this league");
-            return;
-        }
 
         String baseId = displayName.toLowerCase().replaceAll("[^a-z0-9]", "");
         if (baseId.isEmpty()) baseId = "team";
@@ -200,6 +211,7 @@ public class TeamSubcommand implements LeagueCommand.Subcommand {
         teams.remove(teamId);
         manager.getStorage().saveTeams(league, teams);
         sender.sendMessage("§aTeam §l" + team.getName() + "§a deleted.");
+        sender.sendMessage("§7Note: Race results and championship data for this team are preserved.");
     }
 
     private void handleOption(CommandSender sender, League league, String teamId, String[] rest) {
@@ -327,7 +339,17 @@ public class TeamSubcommand implements LeagueCommand.Subcommand {
         }
         String targetUuid = target.getUniqueId().toString();
 
-        if (manager.isPlayerInLeagueTeam(league, targetUuid)) {
+        // Allow inviting yourself if you're an owner but not in the team yet
+        boolean isSelfInvite = targetUuid.equals(p.getUniqueId().toString());
+        boolean isInTeam = manager.isPlayerInLeagueTeam(league, targetUuid);
+
+        // If it's a self-invite and the player is an owner but not in members/reserves, allow it
+        if (isSelfInvite && team.isOwner(targetUuid) && !team.getMembers().contains(targetUuid) && !team.getReserves().contains(targetUuid)) {
+            // Allow self-invite for owners to add themselves to the lineup
+            isInTeam = false;
+        }
+
+        if (isInTeam) {
             sender.sendMessage("§cPlayer already in a team for this league");
             return;
         }
@@ -557,9 +579,9 @@ public class TeamSubcommand implements LeagueCommand.Subcommand {
         }
 
         if (rest.length < 2) {
-            sender.sendMessage("§cUsage: /league <league> team <team> reorder <position> <player>");
+            sender.sendMessage("§cUsage: /league <league> team <team> reorder <position> <player|clear>");
             sender.sendMessage("§7Positions: " + getAvailablePositions(league));
-            sender.sendMessage("§7Players: " + getTeamPlayerNames(team, true));
+            sender.sendMessage("§7Players: " + getTeamPlayerNames(team, true) + ", or use 'clear' to empty a seat");
             return;
         }
 
@@ -572,6 +594,43 @@ public class TeamSubcommand implements LeagueCommand.Subcommand {
             return;
         }
 
+        // Handle clearing a seat
+        if (playerName.equalsIgnoreCase("clear")) {
+            Map<String, Team> teams = manager.getStorage().loadTeams(league);
+            Team liveTeam = teams.get(teamId);
+
+            if (positionArg.startsWith("main-")) {
+                try {
+                    int slot = Integer.parseInt(positionArg.substring(5)) - 1;
+                    if (slot >= 0 && slot < liveTeam.getMembers().size()) {
+                        String removed = liveTeam.getMembers().remove(slot);
+                        manager.getStorage().saveTeams(league, teams);
+                        String removedName = removed != null ? getPlayerName(removed) : "Empty";
+                        sender.sendMessage("§aCleared " + positionArg + " (was: " + removedName + ")");
+                    } else {
+                        sender.sendMessage("§cSlot is already empty");
+                    }
+                } catch (NumberFormatException e) {
+                    sender.sendMessage("§cInvalid position format");
+                }
+            } else if (positionArg.startsWith("reserve-")) {
+                try {
+                    int slot = Integer.parseInt(positionArg.substring(8)) - 1;
+                    if (slot >= 0 && slot < liveTeam.getReserves().size()) {
+                        String removed = liveTeam.getReserves().remove(slot);
+                        manager.getStorage().saveTeams(league, teams);
+                        String removedName = removed != null ? getPlayerName(removed) : "Empty";
+                        sender.sendMessage("§aCleared " + positionArg + " (was: " + removedName + ")");
+                    } else {
+                        sender.sendMessage("§cSlot is already empty");
+                    }
+                } catch (NumberFormatException e) {
+                    sender.sendMessage("§cInvalid position format");
+                }
+            }
+            return;
+        }
+
         OfflinePlayer target = Bukkit.getOfflinePlayer(playerName);
         if (target.getName() == null) {
             sender.sendMessage("§cPlayer not found: " + playerName);
@@ -579,7 +638,11 @@ public class TeamSubcommand implements LeagueCommand.Subcommand {
         }
         String targetUuid = target.getUniqueId().toString();
 
-        boolean isInTeam = team.getMembers().contains(targetUuid) || team.getReserves().contains(targetUuid);
+        // Check if player is in team - include owners list too!
+        boolean isInTeam = team.getMembers().contains(targetUuid) ||
+                team.getReserves().contains(targetUuid) ||
+                team.isOwner(targetUuid);
+
         if (!isInTeam) {
             sender.sendMessage("§cThat player is not in this team");
             return;
@@ -630,6 +693,13 @@ public class TeamSubcommand implements LeagueCommand.Subcommand {
             if (excludeOwner && uuid.equals(team.getOwnerUuid())) continue;
             names.add(getPlayerName(uuid));
         }
+        // Also include owners who might not be in members/reserves
+        for (String uuid : team.getOwners()) {
+            if (excludeOwner && uuid.equals(team.getOwnerUuid())) continue;
+            if (!team.getMembers().contains(uuid) && !team.getReserves().contains(uuid)) {
+                names.add(getPlayerName(uuid) + " (owner)");
+            }
+        }
         return String.join(", ", names);
     }
 
@@ -660,6 +730,13 @@ public class TeamSubcommand implements LeagueCommand.Subcommand {
 
         sender.sendMessage(teamColor + ownerLabel + ": §f" + ownersStr);
         sender.sendMessage(teamColor + "Colour: §f" + colorName + " (" + t.getHexColor().replace("§", "&") + ")");
+
+        // Show current season standings points
+        if (league.getCurrentSeason() != null) {
+            double currentPoints = manager.getTeamPoints(league, t.getId());
+            sender.sendMessage(teamColor + "Current Season Points: §f" + String.format("%.1f", currentPoints) + " §7(" + league.getCurrentSeason() + ")");
+        }
+
         sender.sendMessage(teamColor + "=============================" );
 
         sender.sendMessage(teamColor + "Drivers:");
@@ -669,7 +746,7 @@ public class TeamSubcommand implements LeagueCommand.Subcommand {
         List<String> members = t.getMembers();
         for (int i = 0; i < maxMain; i++) {
             String slotName = "Main-" + (i + 1);
-            if (i < members.size()) {
+            if (i < members.size() && members.get(i) != null) {
                 String name = getPlayerName(members.get(i));
                 sender.sendMessage(teamColor + "  " + slotName + ": §f" + name);
             } else {
@@ -682,7 +759,7 @@ public class TeamSubcommand implements LeagueCommand.Subcommand {
             sender.sendMessage(teamColor + "Reserves:");
             for (int i = 0; i < maxReserve; i++) {
                 String slotName = "Reserve-" + (i + 1);
-                if (i < reserves.size()) {
+                if (i < reserves.size() && reserves.get(i) != null) {
                     String name = getPlayerName(reserves.get(i));
                     sender.sendMessage(teamColor + "  " + slotName + ": §f" + name);
                 } else {

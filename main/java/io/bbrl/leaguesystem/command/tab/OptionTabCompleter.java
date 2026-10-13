@@ -1,19 +1,33 @@
 package io.bbrl.leaguesystem.command.tab;
 
+import io.bbrl.leaguesystem.model.League;
 import io.bbrl.leaguesystem.service.LeagueManager;
 import org.bukkit.command.CommandSender;
+import org.bukkit.entity.Player;
 
 import java.util.List;
 
 public class OptionTabCompleter implements TabSubcommand {
     private final LeagueManager manager;
+    private final League league;
+    private final CommandSender sender;
 
-    public OptionTabCompleter(LeagueManager manager) {
+    public OptionTabCompleter(LeagueManager manager, League league, CommandSender sender) {
         this.manager = manager;
+        this.league = league;
+        this.sender = sender;
     }
 
     @Override
     public List<String> onTabComplete(CommandSender sender, String[] args) {
+        boolean canManage = !(sender instanceof Player) ||
+                ((Player)sender).hasPermission("league.op") ||
+                ((Player)sender).hasPermission("league.leagueowner." + league.getId());
+
+        if (!canManage) {
+            return List.of();
+        }
+
         if (args.length == 1) {
             return List.of(
                             "maxteamownership", "maxdriversperteam", "maxreservesperteam",

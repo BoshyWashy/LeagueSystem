@@ -57,12 +57,13 @@ public class LeagueAdminCommand implements CommandExecutor, TabCompleter {
         switch (action) {
             case "reload" -> {
                 plugin.reloadConfig();
+                plugin.loadGlobalConfig();
                 sender.sendMessage("§aConfiguration reloaded successfully!");
             }
             case "set" -> {
                 if (args.length < 3) {
                     sender.sendMessage("§cUsage: /leagueadmin set <key> <value>");
-                    sender.sendMessage("§cAvailable keys: default-point-system, enable-holograms, hologram-refresh-seconds, max-leagues-per-player, default-team-color, default-league-primary-color, default-league-secondary-color, log-level");
+                    sender.sendMessage("§cAvailable keys: default-point-system, enable-holograms, hologram-refresh-seconds, hologram-leaderboard-length, hologram-y-offset, max-leagues-per-player, default-team-color, default-league-primary-color, default-league-secondary-color, log-level");
                     return true;
                 }
                 String key = args[1];
@@ -83,6 +84,30 @@ public class LeagueAdminCommand implements CommandExecutor, TabCompleter {
                             int num = Integer.parseInt(value);
                             config.set("hologram-refresh-seconds", num);
                             sender.sendMessage("§aSet hologram-refresh-seconds to: " + num);
+                        } catch (NumberFormatException e) {
+                            sender.sendMessage("§cValue must be a number");
+                            return true;
+                        }
+                    }
+                    case "hologram-leaderboard-length" -> {
+                        try {
+                            int num = Integer.parseInt(value);
+                            if (num < 1 || num > 50) {
+                                sender.sendMessage("§cValue must be between 1 and 50");
+                                return true;
+                            }
+                            config.set("hologram-leaderboard-length", num);
+                            sender.sendMessage("§aSet hologram-leaderboard-length to: " + num);
+                        } catch (NumberFormatException e) {
+                            sender.sendMessage("§cValue must be a number");
+                            return true;
+                        }
+                    }
+                    case "hologram-y-offset" -> {
+                        try {
+                            double num = Double.parseDouble(value);
+                            config.set("hologram-y-offset", num);
+                            sender.sendMessage("§aSet hologram-y-offset to: " + num);
                         } catch (NumberFormatException e) {
                             sender.sendMessage("§cValue must be a number");
                             return true;
@@ -116,12 +141,15 @@ public class LeagueAdminCommand implements CommandExecutor, TabCompleter {
                     }
                     default -> {
                         sender.sendMessage("§cUnknown configuration key: " + key);
-                        sender.sendMessage("§cAvailable: default-point-system, enable-holograms, hologram-refresh-seconds, max-leagues-per-player, default-team-color, default-league-primary-color, default-league-secondary-color, log-level");
+                        sender.sendMessage("§cAvailable: default-point-system, enable-holograms, hologram-refresh-seconds, hologram-leaderboard-length, hologram-y-offset, max-leagues-per-player, default-team-color, default-league-primary-color, default-league-secondary-color, log-level");
                         return true;
                     }
                 }
                 plugin.saveConfig();
-                sender.sendMessage("§aConfiguration saved! Changes will take effect immediately.");
+                // Reload the config immediately so changes take effect
+                plugin.reloadConfig();
+                plugin.loadGlobalConfig();
+                sender.sendMessage("§aConfiguration saved and reloaded! Changes are now active.");
             }
             case "get" -> {
                 if (args.length < 2) {
@@ -129,6 +157,8 @@ public class LeagueAdminCommand implements CommandExecutor, TabCompleter {
                     return true;
                 }
                 String key = args[1];
+                // Reload config before getting to ensure we have latest values
+                plugin.reloadConfig();
                 Object value = config.get(key);
                 if (value != null) {
                     sender.sendMessage("§a" + key + " = " + value);
@@ -137,10 +167,14 @@ public class LeagueAdminCommand implements CommandExecutor, TabCompleter {
                 }
             }
             case "info", "status" -> {
+                // Reload config before displaying to ensure we have latest values
+                plugin.reloadConfig();
                 sender.sendMessage("§6========== LeagueSystem Admin Info ==========");
                 sender.sendMessage("§aDefault Point System: §f" + config.getString("default-point-system", "f1"));
                 sender.sendMessage("§aHolograms Enabled: §f" + config.getBoolean("enable-holograms", true));
                 sender.sendMessage("§aHologram Refresh: §f" + config.getInt("hologram-refresh-seconds", 30) + " seconds");
+                sender.sendMessage("§aHologram Leaderboard Length: §f" + config.getInt("hologram-leaderboard-length", 10));
+                sender.sendMessage("§aHologram Y-Offset: §f" + config.getDouble("hologram-y-offset", 0.0));
                 sender.sendMessage("§aMax Leagues Per Player: §f" + config.getInt("max-leagues-per-player", 5));
                 sender.sendMessage("§aDefault Team Color: §f" + config.getString("default-team-color", "#FFFFFF"));
                 sender.sendMessage("§aDefault League Primary: §f" + config.getString("default-league-primary-color", "§6"));
@@ -157,7 +191,7 @@ public class LeagueAdminCommand implements CommandExecutor, TabCompleter {
     private void handleEditTeam(CommandSender sender, String[] args) {
         if (args.length < 5) {
             sender.sendMessage("§cUsage: /leagueadmin edit-team <league> <team> <action> [args...]");
-            sender.sendMessage("§cActions: setOwner, setDriver, rename, renameID, colour, delete");
+            sender.sendMessage("§cActions: setOwner, setDriver, rename, renameID, colour, delete, clearSeat");
             return;
         }
 
@@ -240,12 +274,62 @@ public class LeagueAdminCommand implements CommandExecutor, TabCompleter {
             }
             case "setdriver" -> {
                 if (args.length < 6) {
-                    sender.sendMessage("§cUsage: /leagueadmin edit-team <league> <team> setDriver <main-1|main-2|...|reserve-1|...> <player>");
+                    sender.sendMessage("§cUsage: /leagueadmin edit-team <league> <team> setDriver <main-1|main-2|...|reserve-1|...> <player|clear>");
                     return;
                 }
 
                 String position = args[4].toLowerCase();
                 String playerName = args[5];
+
+                // Handle clearing a seat
+                if (playerName.equalsIgnoreCase("clear")) {
+                    if (position.startsWith("main-")) {
+                        try {
+                            int slot = Integer.parseInt(position.substring(5)) - 1;
+                            int maxMain = league.getConfig().getMaxDriversPerTeam();
+                            if (slot < 0 || slot >= maxMain) {
+                                sender.sendMessage("§cInvalid main slot. Max main drivers: " + maxMain);
+                                return;
+                            }
+                            if (slot < team.getMembers().size()) {
+                                String removedUuid = team.getMembers().get(slot);
+                                team.getMembers().remove(slot);
+                                teams.put(team.getId(), team);
+                                manager.getStorage().saveTeams(league, teams);
+                                String removedName = removedUuid != null ? getPlayerName(removedUuid) : "Empty";
+                                sender.sendMessage("§aCleared main-" + (slot + 1) + " (was: " + removedName + ")");
+                            } else {
+                                sender.sendMessage("§cSlot is already empty");
+                            }
+                        } catch (NumberFormatException e) {
+                            sender.sendMessage("§cInvalid position format");
+                        }
+                    } else if (position.startsWith("reserve-")) {
+                        try {
+                            int slot = Integer.parseInt(position.substring(8)) - 1;
+                            int maxReserve = league.getConfig().getMaxReservesPerTeam();
+                            if (slot < 0 || slot >= maxReserve) {
+                                sender.sendMessage("§cInvalid reserve slot. Max reserves: " + maxReserve);
+                                return;
+                            }
+                            if (slot < team.getReserves().size()) {
+                                String removedUuid = team.getReserves().get(slot);
+                                team.getReserves().remove(slot);
+                                teams.put(team.getId(), team);
+                                manager.getStorage().saveTeams(league, teams);
+                                String removedName = removedUuid != null ? getPlayerName(removedUuid) : "Empty";
+                                sender.sendMessage("§aCleared reserve-" + (slot + 1) + " (was: " + removedName + ")");
+                            } else {
+                                sender.sendMessage("§cSlot is already empty");
+                            }
+                        } catch (NumberFormatException e) {
+                            sender.sendMessage("§cInvalid position format");
+                        }
+                    } else {
+                        sender.sendMessage("§cInvalid position. Use main-1, main-2, etc. or reserve-1, reserve-2, etc.");
+                    }
+                    return;
+                }
 
                 OfflinePlayer target = Bukkit.getOfflinePlayer(playerName);
                 String uuid;
@@ -370,11 +454,21 @@ public class LeagueAdminCommand implements CommandExecutor, TabCompleter {
                 teams.remove(teamId);
                 manager.getStorage().saveTeams(league, teams);
                 sender.sendMessage("§aTeam '" + team.getName() + "' deleted.");
+                sender.sendMessage("§7Note: Race results and championship data for this team are preserved.");
             }
             default -> {
                 sender.sendMessage("§cUnknown action: " + action);
-                sender.sendMessage("§cAvailable: setOwner, setDriver, rename, renameID, colour, delete");
+                sender.sendMessage("§cAvailable: setOwner, setDriver, rename, renameID, colour, delete, clearSeat");
             }
+        }
+    }
+
+    private String getPlayerName(String uuid) {
+        try {
+            String name = Bukkit.getOfflinePlayer(UUID.fromString(uuid)).getName();
+            return name != null ? name : "Unknown";
+        } catch (Exception e) {
+            return "Unknown";
         }
     }
 
@@ -388,10 +482,10 @@ public class LeagueAdminCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("§6=========================================");
         sender.sendMessage("§7Available config keys:");
         sender.sendMessage("§7- default-point-system, enable-holograms");
-        sender.sendMessage("§7- hologram-refresh-seconds, max-leagues-per-player");
-        sender.sendMessage("§7- default-team-color, default-league-primary-color");
-        sender.sendMessage("§7- default-league-secondary-color, log-level");
-        sender.sendMessage("§7Team edit actions: setOwner, setDriver, rename, renameID, colour, delete");
+        sender.sendMessage("§7- hologram-refresh-seconds, hologram-leaderboard-length, hologram-y-offset");
+        sender.sendMessage("§7- max-leagues-per-player, default-team-color");
+        sender.sendMessage("§7- default-league-primary-color, default-league-secondary-color, log-level");
+        sender.sendMessage("§7Team edit actions: setOwner, setDriver, rename, renameID, colour, delete, clearSeat");
     }
 
     @Override
@@ -415,6 +509,8 @@ public class LeagueAdminCommand implements CommandExecutor, TabCompleter {
                                 "default-point-system",
                                 "enable-holograms",
                                 "hologram-refresh-seconds",
+                                "hologram-leaderboard-length",
+                                "hologram-y-offset",
                                 "max-leagues-per-player",
                                 "default-team-color",
                                 "default-league-primary-color",
@@ -442,7 +538,7 @@ public class LeagueAdminCommand implements CommandExecutor, TabCompleter {
         }
 
         if (args.length == 4 && args[0].equalsIgnoreCase("edit-team")) {
-            return List.of("setOwner", "setDriver", "rename", "renameID", "colour", "delete").stream()
+            return List.of("setOwner", "setDriver", "rename", "renameID", "colour", "delete", "clearSeat").stream()
                     .filter(s -> s.toLowerCase().startsWith(args[3].toLowerCase()))
                     .toList();
         }
@@ -482,8 +578,12 @@ public class LeagueAdminCommand implements CommandExecutor, TabCompleter {
                                 .toList();
                     }
                     if (args.length == 6) {
-                        return Bukkit.getOnlinePlayers().stream()
+                        List<String> suggestions = new ArrayList<>();
+                        suggestions.add("clear");
+                        suggestions.addAll(Bukkit.getOnlinePlayers().stream()
                                 .map(Player::getName)
+                                .toList());
+                        return suggestions.stream()
                                 .filter(s -> s.toLowerCase().startsWith(args[5].toLowerCase()))
                                 .toList();
                     }
@@ -498,6 +598,21 @@ public class LeagueAdminCommand implements CommandExecutor, TabCompleter {
                 case "delete" -> {
                     if (args.length == 5) {
                         return List.of("confirm").stream()
+                                .filter(s -> s.toLowerCase().startsWith(args[4].toLowerCase()))
+                                .toList();
+                    }
+                }
+                case "clearseat" -> {
+                    if (args.length == 5 && ol.isPresent()) {
+                        League league = ol.get();
+                        List<String> positions = new ArrayList<>();
+                        for (int i = 1; i <= league.getConfig().getMaxDriversPerTeam(); i++) {
+                            positions.add("main-" + i);
+                        }
+                        for (int i = 1; i <= league.getConfig().getMaxReservesPerTeam(); i++) {
+                            positions.add("reserve-" + i);
+                        }
+                        return positions.stream()
                                 .filter(s -> s.toLowerCase().startsWith(args[4].toLowerCase()))
                                 .toList();
                     }

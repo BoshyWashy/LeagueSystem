@@ -5,6 +5,7 @@ import io.bbrl.leaguesystem.model.Team;
 import io.bbrl.leaguesystem.service.LeagueManager;
 import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
+import org.bukkit.entity.Player;
 
 import java.util.*;
 
@@ -12,10 +13,12 @@ public class TeamTabCompleter implements TabSubcommand {
 
     private final LeagueManager manager;
     private final League league;
+    private final CommandSender sender;
 
-    public TeamTabCompleter(LeagueManager manager, League league) {
+    public TeamTabCompleter(LeagueManager manager, League league, CommandSender sender) {
         this.manager = manager;
         this.league = league;
+        this.sender = sender;
     }
 
     private static final List<String> COLOURS = List.of(
@@ -27,7 +30,17 @@ public class TeamTabCompleter implements TabSubcommand {
     public List<String> onTabComplete(CommandSender sender, String[] args) {
         if (args.length == 1) {
             List<String> out = new ArrayList<>();
-            out.add("create");
+
+            // Check permissions for create
+            boolean canCreate = !(sender instanceof Player) ||
+                    ((Player)sender).hasPermission("league.op") ||
+                    ((Player)sender).hasPermission("league.leagueowner." + league.getId()) ||
+                    ((Player)sender).hasPermission("league.teamcreate." + league.getId()) ||
+                    league.getConfig().isAllowAnyoneCreateTeam();
+
+            if (canCreate) {
+                out.add("create");
+            }
             out.add("list");
 
             Map<String, io.bbrl.leaguesystem.model.Team> teams = manager.getStorage().loadTeams(league);
@@ -61,14 +74,50 @@ public class TeamTabCompleter implements TabSubcommand {
         }
 
         if (args.length == 2) {
-            return List.of("invite", "join", "leave", "info", "option", "delete", "reorder", "kick", "transferownership").stream()
+            List<String> actions = new ArrayList<>(List.of("info", "join"));
+
+            // Check permissions for management actions
+            boolean canManage = false;
+            if (sender instanceof Player p) {
+                Optional<Team> teamOpt = manager.getTeam(league, teamId);
+                if (teamOpt.isPresent()) {
+                    Team team = teamOpt.get();
+                    canManage = p.hasPermission("league.op") ||
+                            p.hasPermission("league.leagueowner." + league.getId()) ||
+                            team.isOwner(p.getUniqueId().toString());
+                }
+            } else {
+                canManage = true;
+            }
+
+            if (canManage) {
+                actions.addAll(List.of("invite", "leave", "option", "delete", "reorder", "kick", "transferownership"));
+            }
+
+            return actions.stream()
                     .filter(s -> s.toLowerCase().startsWith(args[1].toLowerCase()))
                     .toList();
         }
 
         String action = args[1].toLowerCase();
+
+        // Check permission for restricted actions
+        boolean canManageAction = false;
+        if (sender instanceof Player p) {
+            Optional<Team> teamOpt = manager.getTeam(league, teamId);
+            if (teamOpt.isPresent()) {
+                Team team = teamOpt.get();
+                canManageAction = p.hasPermission("league.op") ||
+                        p.hasPermission("league.leagueowner." + league.getId()) ||
+                        team.isOwner(p.getUniqueId().toString());
+            }
+        } else {
+            canManageAction = true;
+        }
+
         switch (action) {
             case "invite" -> {
+                if (!canManageAction) return List.of();
                 if (args.length == 3) {
                     return Bukkit.getOnlinePlayers().stream()
                             .map(p -> p.getName())
@@ -83,6 +132,7 @@ public class TeamTabCompleter implements TabSubcommand {
                 return List.of();
             }
             case "option" -> {
+                if (!canManageAction) return List.of();
                 if (args.length == 3) {
                     return List.of("rename", "renameid", "colour").stream()
                             .filter(s -> s.toLowerCase().startsWith(args[2].toLowerCase()))
@@ -101,10 +151,12 @@ public class TeamTabCompleter implements TabSubcommand {
                 return List.of();
             }
             case "delete" -> {
+                if (!canManageAction) return List.of();
                 if (args.length == 3) return List.of("confirm");
                 return List.of();
             }
             case "reorder" -> {
+                if (!canManageAction) return List.of();
                 if (args.length == 3) {
                     List<String> positions = new ArrayList<>();
                     int maxMain = league.getConfig().getMaxDriversPerTeam();
@@ -121,28 +173,41 @@ public class TeamTabCompleter implements TabSubcommand {
                             .toList();
                 }
                 if (args.length == 4) {
-                    return manager.getTeam(league, teamId)
-                            .map(t -> {
-                                List<String> names = new ArrayList<>();
-                                for (String uuid : t.getMembers()) {
-                                    if (!uuid.equals(t.getOwnerUuid())) {
-                                        String name = Bukkit.getOfflinePlayer(UUID.fromString(uuid)).getName();
-                                        if (name != null) names.add(name);
-                                    }
-                                }
-                                for (String uuid : t.getReserves()) {
-                                    if (!uuid.equals(t.getOwnerUuid())) {
-                                        String name = Bukkit.getOfflinePlayer(UUID.fromString(uuid)).getName();
-                                        if (name != null) names.add(name);
-                                    }
-                                }
-                                return names;
-                            })
-                            .orElse(List.of());
+                    List<String> suggestions = new ArrayList<>();
+                    suggestions.add("clear");
+
+                    // Add team members
+                    Optional<Team> teamOpt = manager.getTeam(league, teamId);
+                    if (teamOpt.isPresent()) {
+                        Team team = teamOpt.get();
+                        for (String uuid : team.getMembers()) {
+                            if (!uuid.equals(team.getOwnerUuid())) {
+                                String name = Bukkit.getOfflinePlayer(UUID.fromString(uuid)).getName();
+                                if (name != null) suggestions.add(name);
+                            }
+                        }
+                        for (String uuid : team.getReserves()) {
+                            if (!uuid.equals(team.getOwnerUuid())) {
+                                String name = Bukkit.getOfflinePlayer(UUID.fromString(uuid)).getName();
+                                if (name != null) suggestions.add(name);
+                            }
+                        }
+                        // Also add owners who might want to add themselves
+                        for (String uuid : team.getOwners()) {
+                            if (!uuid.equals(team.getOwnerUuid())) {
+                                String name = Bukkit.getOfflinePlayer(UUID.fromString(uuid)).getName();
+                                if (name != null && !suggestions.contains(name)) suggestions.add(name);
+                            }
+                        }
+                    }
+                    return suggestions.stream()
+                            .filter(s -> s.toLowerCase().startsWith(args[3].toLowerCase()))
+                            .toList();
                 }
                 return List.of();
             }
             case "kick" -> {
+                if (!canManageAction) return List.of();
                 if (args.length == 3) {
                     return manager.getTeam(league, teamId)
                             .map(t -> {
@@ -170,6 +235,7 @@ public class TeamTabCompleter implements TabSubcommand {
                 return List.of();
             }
             case "transferownership" -> {
+                if (!canManageAction) return List.of();
                 if (args.length == 3) {
                     return manager.getTeam(league, teamId)
                             .map(t -> {

@@ -5,6 +5,7 @@ import io.bbrl.leaguesystem.command.LeagueCommand;
 import io.bbrl.leaguesystem.config.LeagueStorage;
 import io.bbrl.leaguesystem.model.League;
 import io.bbrl.leaguesystem.service.HologramService;
+import io.bbrl.leaguesystem.service.LeaderboardManager;
 import io.bbrl.leaguesystem.service.LeagueManager;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.event.EventHandler;
@@ -16,6 +17,7 @@ public class Main extends JavaPlugin implements Listener {
     private static Main instance;
     private LeagueStorage storage;
     private LeagueManager leagueManager;
+    private LeaderboardManager leaderboardManager;
     private HologramService hologramService;
 
     // Global config values
@@ -35,9 +37,10 @@ public class Main extends JavaPlugin implements Listener {
 
         storage = new LeagueStorage(this);
         leagueManager = new LeagueManager(storage);
-        hologramService = new HologramService(this, leagueManager);
+        leaderboardManager = new LeaderboardManager(storage);
+        hologramService = new HologramService(this, leagueManager, leaderboardManager);
 
-        LeagueCommand leagueCommand = new LeagueCommand(leagueManager, hologramService);
+        LeagueCommand leagueCommand = new LeagueCommand(leagueManager, hologramService, leaderboardManager);
         getCommand("league").setExecutor(leagueCommand);
         getCommand("league").setTabCompleter(leagueCommand);
 
@@ -48,10 +51,17 @@ public class Main extends JavaPlugin implements Listener {
 
         getServer().getPluginManager().registerEvents(this, this);
 
+        // Spawn all holograms on startup
+        getServer().getScheduler().runTaskLater(this, () -> {
+            for (League league : leagueManager.allLeagues()) {
+                leaderboardManager.refreshAllLeaderboards(league);
+            }
+        }, 40L); // 2 seconds after startup
+
         getLogger().info("LeagueSystem enabled");
     }
 
-    private void loadGlobalConfig() {
+    public void loadGlobalConfig() {
         FileConfiguration config = getConfig();
         defaultPointSystem = config.getString("default-point-system", "f1");
         enableHolograms = config.getBoolean("enable-holograms", true);
@@ -70,12 +80,12 @@ public class Main extends JavaPlugin implements Listener {
                 ", leagueSecondary=" + defaultLeagueSecondaryColor);
     }
 
-    /* deliver offline invites 1 second after join */
+    /* deliver offline invites 5 seconds after join */
     @EventHandler
     public void onJoin(PlayerJoinEvent e) {
         getServer().getScheduler().runTaskLater(this, () -> {
             leagueManager.deliverOfflineInvites(e.getPlayer());
-        }, 20L);
+        }, 100L); // 5 seconds (20 ticks = 1 second)
     }
 
     public static Main getInstance() {
@@ -83,6 +93,7 @@ public class Main extends JavaPlugin implements Listener {
     }
 
     public LeagueManager getLeagueManager() { return leagueManager; }
+    public LeaderboardManager getLeaderboardManager() { return leaderboardManager; }
     public LeagueStorage getStorage() { return storage; }
 
     /* Accessors for global config */
@@ -96,6 +107,12 @@ public class Main extends JavaPlugin implements Listener {
 
     @Override
     public void onDisable() {
+        // Despawn all holograms on shutdown
+        if (leaderboardManager != null) {
+            for (League league : leagueManager.allLeagues()) {
+                leaderboardManager.despawnAllLeagueHolograms(league.getId());
+            }
+        }
         getLogger().info("LeagueSystem disabled");
     }
 }

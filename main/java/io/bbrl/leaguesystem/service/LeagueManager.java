@@ -84,9 +84,27 @@ public class LeagueManager {
         storage.saveLeague(league);
     }
 
+    public void finishSeason(League league, String key) {
+        storage.setSeasonFinished(league, key, true);
+        league.finishSeason(key);
+    }
+
+    public void unfinishSeason(League league, String key) {
+        storage.setSeasonFinished(league, key, false);
+        league.unfinishSeason(key);
+    }
+
+    public boolean isSeasonFinished(League league, String key) {
+        return storage.isSeasonFinished(league, key);
+    }
+
     public void setSeasonRaceCount(League league, String key, String raceCountDisplay) {
         storage.setSeasonRaceCount(league, key, raceCountDisplay);
     }
+
+    /* ---------------------------------------------------------- */
+    /*  Team management                                            */
+    /* ---------------------------------------------------------- */
 
     public Optional<Team> getTeam(League league, String teamId) {
         if (league == null) return Optional.empty();
@@ -104,14 +122,31 @@ public class LeagueManager {
                 .findFirst();
     }
 
-    public boolean canCreateTeam(League league, String ownerUuid) {
+    /**
+     * Check if a player can create a team in a league.
+     * League owners can own multiple teams in their own league.
+     * Other players are limited by maxTeamOwnership config.
+     */
+    public boolean canCreateTeam(League league, String ownerUuid, boolean isLeagueOwner) {
+        // League owners can own unlimited teams in their own league
+        if (isLeagueOwner) {
+            return true;
+        }
+
+        // Regular players limited by maxTeamOwnership
         long alreadyOwns = storage.loadTeams(league).values().stream()
                 .filter(t -> t.isOwner(ownerUuid)).count();
         return alreadyOwns < league.getConfig().getMaxTeamOwnership();
     }
 
+    /**
+     * @deprecated Use canCreateTeam(League, String, boolean) instead
+     */
+    public boolean canCreateTeam(League league, String ownerUuid) {
+        return canCreateTeam(league, ownerUuid, false);
+    }
+
     public Team createTeam(League league, String teamId, String name, String hex, String ownerUuid) {
-        if (!canCreateTeam(league, ownerUuid)) return null;
         Map<String, Team> teams = storage.loadTeams(league);
 
         if (teams.containsKey(teamId.toLowerCase())) {
@@ -136,6 +171,9 @@ public class LeagueManager {
         storage.renameTeam(league, oldTeamId, newTeamId, newName);
     }
 
+    /* ---------------------------------------------------------- */
+    /*  Invites                                                    */
+    /* ---------------------------------------------------------- */
     public boolean hasInvite(League league, String teamId, String playerUuid) {
         return league.getTeamInvites().getOrDefault(teamId.toLowerCase(), Collections.emptySet())
                 .stream().anyMatch(entry -> entry.uuid.equals(playerUuid));
@@ -188,6 +226,9 @@ public class LeagueManager {
         }
     }
 
+    /* ---------------------------------------------------------- */
+    /*  Player team management                                     */
+    /* ---------------------------------------------------------- */
     public void addPlayerToTeam(League league, String teamId, String playerUuid) {
         Map<String, Team> teams = storage.loadTeams(league);
         Team live = teams.get(teamId.toLowerCase());
@@ -317,24 +358,108 @@ public class LeagueManager {
     public void saveLeague(League league) { storage.saveLeague(league); }
 
     public double getPlayerPoints(League league, String playerUuid) {
-        Map<String, Object> champ = storage.loadChampionship(league, league.getCurrentSeason());
+        String currentSeason = league.getCurrentSeason();
+        if (currentSeason == null) return 0.0;
+        Map<String, Object> champ = storage.loadChampionship(league, currentSeason);
         Map<String, Double> drivers = (Map<String, Double>) champ.getOrDefault("drivers", Map.of());
         return drivers.getOrDefault(playerUuid, 0.0);
     }
 
     public double getTeamPoints(League league, String teamId) {
-        Map<String, Object> champ = storage.loadChampionship(league, league.getCurrentSeason());
+        String currentSeason = league.getCurrentSeason();
+        if (currentSeason == null) return 0.0;
+        Map<String, Object> champ = storage.loadChampionship(league, currentSeason);
         Map<String, Double> teams = (Map<String, Double>) champ.getOrDefault("teams", Map.of());
         return teams.getOrDefault(teamId.toLowerCase(), 0.0);
     }
 
     public LinkedHashMap<String, Double> getDriverStandings(League league) {
-        Map<String, Object> champ = storage.loadChampionship(league, league.getCurrentSeason());
+        String currentSeason = league.getCurrentSeason();
+        if (currentSeason == null) {
+            return new LinkedHashMap<>();
+        }
+        Map<String, Object> champ = storage.loadChampionship(league, currentSeason);
         Map<String, Double> drivers = (Map<String, Double>) champ.getOrDefault("drivers", Map.of());
         Map<String, Double> tmp = new LinkedHashMap<>(drivers);
         return tmp.entrySet().stream()
                 .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
                 .collect(LinkedHashMap::new, (m, e) -> m.put(e.getKey(), e.getValue()), Map::putAll);
+    }
+
+    /* ---------------------------------------------------------- */
+    /*  Race finalization                                          */
+    /* ---------------------------------------------------------- */
+    public boolean isRaceFinished(League league, String season, String race) {
+        return storage.isRaceFinished(league, season, race);
+    }
+
+    public void setRaceFinished(League league, String season, String race, boolean finished) {
+        storage.setRaceFinished(league, season, race, finished);
+    }
+
+    /**
+     * Finish a race - calculate all results and save team associations.
+     * This finalizes the race and makes results permanent.
+     */
+    public void finishRace(League league, String season, String race) {
+        // Get all race results
+        Map<String, Integer> results = storage.getRaceResults(league, season, race);
+
+        // For each driver, determine which team they were driving for
+        Map<String, Team> teams = storage.loadTeams(league);
+        for (Map.Entry<String, Integer> entry : results.entrySet()) {
+            String uuid = entry.getKey();
+
+            // Find which team this driver belongs to
+            String teamId = null;
+            for (Team team : teams.values()) {
+                if (team.getMembers().contains(uuid) || team.getReserves().contains(uuid) || team.isOwner(uuid)) {
+                    teamId = team.getId();
+                    break;
+                }
+            }
+
+            // Save the team association for this race
+            if (teamId != null) {
+                storage.saveRaceResultTeam(league, season, race, uuid, teamId);
+            }
+        }
+
+        // Mark race as finished
+        storage.setRaceFinished(league, season, race, true);
+
+        // Rebuild championship
+        storage.saveChampionship(league, season, null);
+    }
+
+    /**
+     * Update a driver's position in a finished race.
+     * This recalculates points and updates the championship.
+     */
+    public void updateDriverPosition(League league, String season, String race, String uuid, int newPosition) {
+        if (!isRaceFinished(league, season, race)) {
+            return; // Can't update positions in unfinished race
+        }
+
+        int points = io.bbrl.leaguesystem.service.PointCalculator.getPointsFor(league, newPosition);
+        storage.saveRaceResult(league, season, race, uuid, newPosition, points);
+
+        // Rebuild championship to reflect changes
+        storage.saveChampionship(league, season, null);
+    }
+
+    /**
+     * Update which team a driver was driving for in a finished race.
+     */
+    public void updateDriverTeamForRace(League league, String season, String race, String uuid, String teamId) {
+        if (!isRaceFinished(league, season, race)) {
+            return; // Can only change team in finished races
+        }
+
+        storage.saveRaceResultTeam(league, season, race, uuid, teamId);
+
+        // Rebuild championship to reflect changes
+        storage.saveChampionship(league, season, null);
     }
 
     public static class InviteEntry {

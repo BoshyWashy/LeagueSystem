@@ -3,6 +3,7 @@ package io.bbrl.leaguesystem.command;
 import io.bbrl.leaguesystem.command.subcommands.*;
 import io.bbrl.leaguesystem.command.tab.*;
 import io.bbrl.leaguesystem.service.HologramService;
+import io.bbrl.leaguesystem.service.LeaderboardManager;
 import io.bbrl.leaguesystem.service.LeagueManager;
 import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
@@ -17,10 +18,12 @@ public class LeagueCommand implements CommandExecutor, TabCompleter {
 
     private final LeagueManager manager;
     private final HologramService hologramService;
+    private final LeaderboardManager leaderboardManager;
 
-    public LeagueCommand(LeagueManager manager, HologramService hologramService) {
+    public LeagueCommand(LeagueManager manager, HologramService hologramService, LeaderboardManager leaderboardManager) {
         this.manager = manager;
         this.hologramService = hologramService;
+        this.leaderboardManager = leaderboardManager;
     }
 
     @Override
@@ -71,8 +74,33 @@ public class LeagueCommand implements CommandExecutor, TabCompleter {
                 }
             }
 
+            // Despawn all holograms before deleting
+            leaderboardManager.despawnAllLeagueHolograms(leagueId);
+
             manager.deleteLeague(leagueId);
             sender.sendMessage("§aLeague §l" + leagueId + "§a and all its data deleted.");
+            return true;
+        }
+
+        // Handle description command
+        if (subKey.equals("description")) {
+            if (sender instanceof Player p) {
+                if (!p.hasPermission("league.op") && !p.hasPermission("league.leagueowner." + leagueId)) {
+                    sender.sendMessage("§cYou don't have permission to set the league description.");
+                    return true;
+                }
+            }
+
+            if (rest.length < 1) {
+                sender.sendMessage("§cUsage: /league " + leagueId + " description <text>");
+                return true;
+            }
+
+            String description = String.join(" ", rest);
+            io.bbrl.leaguesystem.model.League league = ol.get();
+            league.setDescription(description);
+            manager.saveLeague(league);
+            sender.sendMessage("§aLeague description updated!");
             return true;
         }
 
@@ -81,13 +109,14 @@ public class LeagueCommand implements CommandExecutor, TabCompleter {
             case "option" -> new OptionSubcommand(manager);
             case "team"   -> new TeamSubcommand(manager);
             case "points" -> new PointsScaleSubcommand(manager);
-            case "season" -> new SeasonSubcommand(manager);
+            case "season" -> new SeasonSubcommand(manager, leaderboardManager);
             case "setspawn", "spawn" -> new SpawnSubcommand(manager);
+            case "leaderboard" -> new LeaderboardSubcommand(manager, leaderboardManager);
             default -> null;
         };
 
         if (sc == null) {
-            sender.sendMessage("§cUnknown subcommand. Available: info, option, team, points, season, setspawn, spawn, delete");
+            sender.sendMessage("§cUnknown subcommand. Available: info, option, team, points, season, setspawn, spawn, delete, leaderboard, description");
             return true;
         }
 
@@ -151,13 +180,17 @@ public class LeagueCommand implements CommandExecutor, TabCompleter {
         io.bbrl.leaguesystem.model.League league = ol.get();
 
         if (args.length == 2) {
-            List<String> out = new ArrayList<>(List.of("info", "option", "team", "points", "season", "spawn"));
-            // Only show delete and setspawn if they have permission
-            if (!(sender instanceof Player) ||
+            List<String> out = new ArrayList<>(List.of("info", "option", "team", "points", "season", "spawn", "leaderboard"));
+
+            // Only show delete, setspawn, description if they have permission
+            boolean canManage = !(sender instanceof Player) ||
                     ((Player)sender).hasPermission("league.op") ||
-                    ((Player)sender).hasPermission("league.leagueowner." + firstArg)) {
+                    ((Player)sender).hasPermission("league.leagueowner." + firstArg);
+
+            if (canManage) {
                 out.add("delete");
                 out.add("setspawn");
+                out.add("description");
             }
             return out.stream()
                     .filter(s -> s.toLowerCase().startsWith(args[1].toLowerCase()))
@@ -169,11 +202,13 @@ public class LeagueCommand implements CommandExecutor, TabCompleter {
 
         TabSubcommand tab = switch (subKey) {
             case "info"   -> new InfoTabCompleter();
-            case "option" -> new OptionTabCompleter(manager);
-            case "team"   -> new TeamTabCompleter(manager, league);
-            case "points" -> new PointsScaleTabCompleter(manager, league);
-            case "season" -> new SeasonTabCompleter(manager, league);
+            case "option" -> new OptionTabCompleter(manager, league, sender);
+            case "team"   -> new TeamTabCompleter(manager, league, sender);
+            case "points" -> new PointsScaleTabCompleter(manager, league, sender);
+            case "season" -> new SeasonTabCompleter(manager, league, sender);
+            case "leaderboard" -> new LeaderboardTabCompleter(manager, leaderboardManager, league, sender);
             case "setspawn", "spawn" -> null;
+            case "description" -> null; // No tab completion needed for description text
             default -> null;
         };
 

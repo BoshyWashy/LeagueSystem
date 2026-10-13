@@ -34,8 +34,27 @@ public class InfoSubcommand implements LeagueCommand.Subcommand {
         sender.sendMessage(pri + "==============================");
         sender.sendMessage(sec + " " + l.getName());
         sender.sendMessage(pri + " League ID: [" + sec + l.getId() + pri + "]");
+
+        // Show description if set
+        if (l.getDescription() != null && !l.getDescription().isEmpty()) {
+            sender.sendMessage(pri + "==============================");
+            sender.sendMessage(l.getDescription());
+        }
+
         sender.sendMessage(pri + "==============================");
         sender.sendMessage(pri + "| " + "Teams: " + sec + manager.getStorage().loadTeams(l).size() + pri + " | " + "Races: " + sec + manager.getStorage().listRaces(l, l.getCurrentSeason()).size() + pri + " | " + "Seasons: " + sec + l.getSeasons().size() + pri + " |");
+
+        /*
+        // Show current season info
+        if (l.getCurrentSeason() != null) {
+            String currentSeason = l.getCurrentSeason();
+            boolean isFinished = l.isSeasonFinished(currentSeason);
+            sender.sendMessage(pri + "Current Season: " + sec + currentSeason + (isFinished ? pri + " [FINISHED]" : ""));
+        } else {
+            sender.sendMessage(pri + "Current Season: " + sec + "None");
+        }
+        */
+
         sender.sendMessage(pri + "==============================");
         sender.sendMessage(pri + "Point system: " + sec + l.getConfig().getPointSystem());
         sender.sendMessage(pri + "Primary: " + "(" + sec + l.getConfig().getPrimaryColor().replace("§", "&") + pri + ")" + sec + " | " + pri + "Secondary: " + "(" + sec + l.getConfig().getSecondaryColor().replace("§", "&") + pri + ")");

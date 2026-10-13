@@ -34,6 +34,10 @@ public class LeagueConfig {
     private float spawnPitch = 0.0f;
     private boolean spawnSet = false;
 
+    /* Hologram leaderboard settings */
+    private int hologramLeaderboardLength = 10;
+    private double hologramYOffset = 0.0;
+
     /* TRANSIENT: only used while saving league – not persisted as JSON/YAML itself */
     private transient String owner = "unknown | unknown";
 
@@ -93,6 +97,12 @@ public class LeagueConfig {
     public void setSpawnPitch(float spawnPitch) { this.spawnPitch = spawnPitch; }
     public boolean isSpawnSet() { return spawnSet; }
     public void setSpawnSet(boolean spawnSet) { this.spawnSet = spawnSet; }
+
+    /* Hologram leaderboard settings */
+    public int getHologramLeaderboardLength() { return hologramLeaderboardLength; }
+    public void setHologramLeaderboardLength(int v) { this.hologramLeaderboardLength = v; }
+    public double getHologramYOffset() { return hologramYOffset; }
+    public void setHologramYOffset(double v) { this.hologramYOffset = v; }
 
     /* TRANSIENT owner */
     public String getOwner() { return owner; }
